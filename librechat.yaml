@@ -1,0 +1,8 @@
+version: 1.1.0
+
+actions:
+  allowedDomains:
+    - "analytics-api"
+    - "localhost"
+    - "127.0.0.1"
+    - "analytics-api-rvbl.vercel.app"

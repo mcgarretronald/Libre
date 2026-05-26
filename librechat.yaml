@@ -5,4 +5,4 @@ actions:
     - "analytics-api"
     - "localhost"
     - "127.0.0.1"
-    - "analytics-api-rvbl.vercel.app"
+    - "libre-analysis.vercel.app"

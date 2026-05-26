@@ -1,1 +1,17 @@
+FROM ghcr.io/danny-avila/librechat:latest AS builder
+
+USER root
+
+COPY librechat-client/package.json /app/client/package.json
+
+WORKDIR /app/client
+RUN npm install chart.js react-chartjs-2 --no-save
+
+COPY librechat-client/src /app/client/src
+
+WORKDIR /app
+RUN npm run build:client
+
+
 FROM ghcr.io/danny-avila/librechat:latest
+COPY --from=builder /app/client/dist /app/client/dist

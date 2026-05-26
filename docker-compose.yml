@@ -4,7 +4,9 @@ networks:
 
 services:
   librechat:
-    image: ghcr.io/danny-avila/librechat:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.libre
     container_name: librechat_app
     ports:
       - "3080:3080"

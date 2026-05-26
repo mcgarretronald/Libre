@@ -93,6 +93,8 @@ function generateBrandedHTML(data: any[], brand: any, query: string): string {
     <meta charset="UTF-8">
     <title>${brandName} Analytics Report</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.0/dist/chartjs-adapter-luxon.umd.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @media print {

@@ -246,7 +246,7 @@ export async function POST(req: Request) {
       }] : [];
 
       const emailResponse = await resend.emails.send({
-        from: 'ClickHouse Reports <analytics@libre-analysis.vercel.app>',
+        from: 'ClickHouse Reports <onboarding@resend.dev>',
         to: recipient_email,
         subject: `${brand_context?.name || 'Business'} Intelligence Report`,
         html: `

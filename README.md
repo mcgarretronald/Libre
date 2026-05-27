@@ -35,7 +35,7 @@ Follow these direct steps to host the entire stack publicly.
 
 ### Step 1: Spin up ClickHouse Cloud
 1. Create a service on [ClickHouse Cloud](https://clickhouse.com/cloud).
-2. Open the ClickHouse SQL Console and seed your tables (`cell_towers`, `sales`, `customers`) with standard SQL scripts.
+2. Open the ClickHouse SQL Console and seed your tables (`cell_towers`) with standard SQL scripts.
 3. Keep your cluster connection strings secure.
 
 ### Step 2: Deploy API Gateway to Vercel
@@ -45,6 +45,10 @@ Follow these direct steps to host the entire stack publicly.
    - `CLICKHOUSE_USER`: `default`
    - `CLICKHOUSE_PASSWORD`: `your_cloud_password`
    - `CLICKHOUSE_DATABASE`: `default`
+   - `RESEND_API_KEY`: `your_resend_api_key` (Required for PDF email reporting)
+
+> [!NOTE]
+> By default, the PDF report dispatch service uses the Resend sandbox address `onboarding@resend.dev`. Outbound emails will strictly be sent to the verified Resend account owner. If you wish to send PDF reports to arbitrary third-party public email addresses, verify your custom domain in the Resend dashboard and update the `from` sender domain in the route code accordingly.
 
 ### Step 3: Spin up MongoDB Atlas
 1. Create a free M0 cluster on [MongoDB Atlas](https://www.mongodb.com/cloud/atlas).
@@ -71,12 +75,131 @@ ENDPOINTS=openAI,agents
 
 MONGO_URI=mongodb+srv://admin_user:yourSecurePassword@cluster.mongodb.net/LibreChat?retryWrites=true&w=majority
 
+# ClickHouse Cloud Analytics Database
+CLICKHOUSE_HOST=https://your-cloud-host.clickhouse.cloud:8443
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=your_clickhouse_password
+CLICKHOUSE_DATABASE=default
+
 JWT_SECRET=4fb03ffec291244abeb4a9b6c0065ad7bdc98a3e7428807d995c760cdbf6011d
 JWT_REFRESH_SECRET=7f5df5ccb57d60f58eb808c160b7ca67b3fb5ea6da95e929f957018ad5a34f8a
+
+# Credentials encryption keys
 CREDS_KEY=f5efab41ef7da0119a0a030eb9e3d9319e7428807d995c760cdbf6011dd5d7b5b
 CREDS_IV=e57efab41ef7da0119a0a030eb9e3d
 
+# Third-party integrations
 OPENAI_API_KEY=sk-proj-yourActualOpenAiApiKey...
+RESEND_API_KEY=re_yourResendApiKey...
+```
+
+## OpenAPI Actions Tool Schema
+
+To configure the tools/actions for your LibreChat LLM Agent, copy the following OpenAPI 3.0 specification and paste it into the **Actions** configuration panel of the Agent Builder interface:
+
+```json
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "ClickHouse Analytics API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://libre-analysis.vercel.app"
+    }
+  ],
+  "paths": {
+    "/api/analytics/query": {
+      "post": {
+        "operationId": "run_analytics_query",
+        "summary": "Executes analytical SQL query on ClickHouse",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "query"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/analytics/schema": {
+      "get": {
+        "operationId": "get_database_schema",
+        "summary": "Fetches current database table maps and columns",
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/analytics/email-report": {
+      "post": {
+        "operationId": "email_analytics_report",
+        "summary": "Generates a branded PDF report and emails it to the specified recipient",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "recipient_email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "query_used": {
+                    "type": "string"
+                  },
+                  "brand_context": {
+                    "type": "object",
+                    "properties": {
+                      "primary": {
+                        "type": "string"
+                      },
+                      "secondary": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "recipient_email",
+                  "query_used"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    }
+  }
+}
 ```
 
 ---

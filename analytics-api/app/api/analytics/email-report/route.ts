@@ -4,7 +4,6 @@ import { Resend } from 'resend';
 import puppeteer from 'puppeteer-core';
 import fs from 'fs';
 
-// 1. Initialize ClickHouse Client (same host resolver as query/route.ts)
 const getClickhouseHost = (): string => {
   const rawHost = process.env.CLICKHOUSE_HOST || 'http://localhost:8123';
   let isDocker = false;
@@ -24,10 +23,10 @@ const clickhouse = createClient({
   database: process.env.CLICKHOUSE_DATABASE || 'default',
 });
 
-// 2. Initialize Resend
+// 1. Initialize Resend
 const resend = new Resend(process.env.RESEND_API_KEY || 're_mock_key');
 
-// 3. Helper to launch headless browser (production serverless vs local)
+// 2. Helper to launch headless browser (production serverless vs local)
 async function getBrowser() {
   const isLocal = process.env.NODE_ENV === 'development' || !process.env.AWS_EXECUTION_ENV;
 
@@ -70,8 +69,8 @@ async function getBrowser() {
 // 4. Generate high-fidelity branded HTML page
 function generateBrandedHTML(data: any[], brand: any, query: string): string {
   const brandName = brand?.name || 'Analytics Dashboard';
-  const primaryColor = brand?.primary || '#6366f1'; // default Indigo
-  const secondaryColor = brand?.secondary || '#14b8a6'; // default Teal
+  const primaryColor = brand?.primary || '#6366f1'; 
+  const secondaryColor = brand?.secondary || '#14b8a6';
 
   const labelsJson = JSON.stringify(data.map(d => d.radio || d.category || Object.values(d)[0]));
   const countsJson = JSON.stringify(data.map(d => d.count || d.total_revenue || Object.values(d)[1]));

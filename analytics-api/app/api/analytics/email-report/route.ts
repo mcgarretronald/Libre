@@ -77,6 +77,10 @@ export async function POST(req: Request) {
 
       const page = await browser.newPage();
 
+      // Listen to page console and error events for debugging
+      page.on('console', msg => console.log('PUPPETEER PAGE LOG:', msg.text()));
+      page.on('pageerror', err => console.error('PUPPETEER PAGE ERROR:', err.message));
+
       // Set HTML content and wait for full load & network synchronization
       await page.setContent(html_markup, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'] });
 
@@ -100,21 +104,7 @@ export async function POST(req: Request) {
       pdfBuffer = Buffer.from(generatedPdf);
     }
 
-    // 1. Initialize the SMTP transport layer
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '465'),
-      secure: true, // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD,
-      },
-    });
-
-    // 2. Explicitly verify the SMTP connection pool before sending (Crucial for Serverless stability)
-    await transporter.verify();
-
-    // 3. Compile the message structural envelope dynamically without hardcoded Shamba Records
+    // 1. Compile the message structural envelope dynamically
     const reportSubject = subject || (brand_context?.name 
       ? `${brand_context.name} Intelligence Report` 
       : 'Analysis Intelligence Report');
@@ -123,11 +113,58 @@ export async function POST(req: Request) {
       ? `${brand_context.name.toLowerCase().replace(/\s+/g, '_')}_report.pdf` 
       : 'analytics_report.pdf';
 
+    // Format the email body beautifully if it is custom
+    let mailHtml: string;
+    if (email_body) {
+      // If email_body has HTML tags already, use it directly.
+      // Otherwise, convert Markdown/plain text into clean, styled HTML
+      if (email_body.includes('<') && email_body.includes('>')) {
+        mailHtml = email_body;
+      } else {
+        // Convert Markdown bold and newlines to HTML
+        let formattedBody = email_body
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.*?)\*/g, '<em>$1</em>')
+          .replace(/\n/g, '<br>');
+        
+        mailHtml = `
+          <div style="font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #334155; line-height: 1.6;">
+            <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+              <h3 style="margin-top: 0; color: #1e3a8a;">Executive Report Summary</h3>
+              <p style="margin: 0; font-size: 14px;">${formattedBody}</p>
+            </div>
+            <p style="font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 20px;">
+              Please find your high-fidelity, interactive PDF report attached to this email.
+            </p>
+          </div>
+        `;
+      }
+    } else {
+      mailHtml = html_markup || '<p>Please find attached your requested analytical readout.</p>';
+    }
+
+    // 2. Initialize the SMTP transport layer using pure Nodemailer
+    const smtpPort = parseInt(process.env.SMTP_PORT || '587');
+    console.log(`Initializing Nodemailer SMTP transport on host: ${process.env.SMTP_HOST}, port: ${smtpPort}, secure: ${smtpPort === 465}`);
+    
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: smtpPort,
+      secure: smtpPort === 465, // true for 465, false for other ports (GMail requires STARTTLS for 587)
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASSWORD,
+      },
+    });
+
+    // 3. Explicitly verify the SMTP connection pool before sending
+    await transporter.verify();
+
     const mailOptions = {
       from: `"ClickHouse Reports" <${process.env.SMTP_USER}>`,
       to: recipient_email,
       subject: reportSubject,
-      html: email_body || html_markup || '<p>Please find attached your requested analytical readout.</p>',
+      html: mailHtml,
       attachments: [
         {
           filename: reportFilename,
@@ -137,9 +174,9 @@ export async function POST(req: Request) {
       ]
     };
 
-    // 4. Dispatch the message and await completion before releasing the lambda thread
+    // 4. Dispatch the message and await completion
     const info = await transporter.sendMail(mailOptions);
-    console.log('Message sent successfully: %s', info.messageId);
+    console.log('Message sent successfully via SMTP: %s', info.messageId);
 
     return NextResponse.json({ success: true, message: 'Report dispatched via SMTP link.' });
 

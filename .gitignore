@@ -1,2 +1,6 @@
 .env
 .env.*
+
+# Local scratch and database update scripts
+scratch_explore_db.js
+update_agent_db.js

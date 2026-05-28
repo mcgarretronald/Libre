@@ -14,6 +14,20 @@ export async function POST(req: Request) {
   try {
     const { recipient_email, query_used, html_markup } = await req.json();
 
+    if (!recipient_email) {
+      return NextResponse.json(
+        { success: false, error: 'recipient_email is required.' },
+        { status: 400 }
+      );
+    }
+
+    if (!html_markup) {
+      return NextResponse.json(
+        { success: false, error: 'html_markup is required to generate a high-fidelity PDF report.' },
+        { status: 400 }
+      );
+    }
+
     let browser;
     // Detect environment
     const isLocal = process.env.NODE_ENV !== 'production' || !process.env.VERCEL;
@@ -59,9 +73,9 @@ export async function POST(req: Request) {
 
     const page = await browser.newPage();
 
-    // 3. Set HTML content with strict fallback assignments and wait for full load & network synchronization
-    const safeHtmlMarkup = html_markup || '<h2>Fallback Report</h2>';
-    await page.setContent(safeHtmlMarkup, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'] });
+    // 3. Set HTML content and wait for full load & network synchronization
+    await page.setContent(html_markup, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'] });
+
 
     // 3.1. Wait for canvas element to be fully mounted in the DOM to prevent empty snapshots
     try {

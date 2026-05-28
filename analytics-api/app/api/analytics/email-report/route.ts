@@ -59,8 +59,18 @@ export async function POST(req: Request) {
 
     const page = await browser.newPage();
 
-    // 3. Set HTML content and wait for network
-    await page.setContent(html_markup, { waitUntil: 'networkidle0' });
+    // 3. Set HTML content with strict fallback assignments and wait for full load & network synchronization
+    const safeHtmlMarkup = html_markup || '<h2>Fallback Report</h2>';
+    await page.setContent(safeHtmlMarkup, { waitUntil: ['load', 'domcontentloaded', 'networkidle0'] });
+
+    // 3.1. Wait for canvas element to be fully mounted in the DOM to prevent empty snapshots
+    try {
+      await page.waitForSelector('canvas', { timeout: 5000 });
+      // Add a slight delay to ensure Chart.js transitions and animation loops are completed
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    } catch (e: any) {
+      console.warn('Canvas selector wait timed out or was not present:', e.message);
+    }
 
     // 4. Generate A4 PDF buffer
     const pdfBuffer = await page.pdf({

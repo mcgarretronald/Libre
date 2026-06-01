@@ -4,3 +4,8 @@
 # Local scratch and database update scripts
 scratch_explore_db.js
 update_agent_db.js
+node_modules
+test-ask.js
+test-lc.js
+check-mongo.js
+check-agents.js

@@ -3,6 +3,8 @@ networks:
     driver: bridge
 
 services:
+
+  # ── LibreChat AI Backend ──────────────────────────────────────────────────
   librechat:
     build:
       context: .
@@ -20,3 +22,42 @@ services:
     networks:
       - librechat_network
     restart: always
+
+  # ── Jacaranda Portal UI ───────────────────────────────────────────────────
+  portal-web:
+    build:
+      context: ./analytics-api
+      dockerfile: Dockerfile
+    container_name: jacaranda-portal-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./analytics-api/.env.local   # portal-specific vars (ClickHouse, Mongo, SMTP)
+      - .env                          # also loads LIBRECHAT_URL, OPENAI_API_KEY etc.
+    environment:
+      - LIBRECHAT_URL=http://librechat_app:3080
+      - NODE_ENV=production
+    command: ["node", "server.js"]
+    networks:
+      - librechat_network
+    depends_on:
+      - librechat
+
+  # ── Cron Worker (email dispatch) ──────────────────────────────────────────
+  portal-cron:
+    build:
+      context: ./analytics-api
+      dockerfile: Dockerfile
+    container_name: jacaranda-portal-cron
+    restart: unless-stopped
+    env_file:
+      - ./analytics-api/.env.local
+      - .env
+    environment:
+      - NODE_ENV=production
+    command: ["npm", "run", "cron"]
+    networks:
+      - librechat_network
+    depends_on:
+      - librechat

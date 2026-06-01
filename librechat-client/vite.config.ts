@@ -43,6 +43,10 @@ export default defineConfig(({ command }) => ({
     port: (process.env.PORT && Number(process.env.PORT)) || 3090,
     strictPort: false,
     proxy: {
+      '/api/analytics': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
       '/api': {
         target: backendURL,
         changeOrigin: true,

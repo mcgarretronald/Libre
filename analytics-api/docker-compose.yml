@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  portal-web:
+    build: .
+    container_name: jacaranda-portal-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    command: ["node", "server.js"]
+    networks:
+      - portal-network
+
+  portal-cron:
+    build: .
+    container_name: jacaranda-portal-cron
+    restart: unless-stopped
+    env_file:
+      - .env.local
+    command: ["npm", "run", "cron"]
+    networks:
+      - portal-network
+
+networks:
+  portal-network:
+    driver: bridge

@@ -39,12 +39,9 @@ export default function Home() {
     setTimeout(() => setToast(null), 5000);
   };
 
-  // ── API Base URL ───────────────────────────────────────────────────────────
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://libre-l4iz.onrender.com';
-
   // ── Fetch reports on mount ─────────────────────────────────────────────────
   useEffect(() => {
-    fetch(`${API_BASE}/api/analytics/reports`)
+    fetch('/api/analytics/reports')
       .then(r => r.json())
       .then(d => { if (d.success && d.data) setGeneratedReports(d.data); })
       .catch(console.error);
@@ -53,7 +50,7 @@ export default function Home() {
   // ── Fetch campaigns when campaigner view opens ─────────────────────────────
   useEffect(() => {
     if (activeView !== 'campaigner') return;
-    fetch(`${API_BASE}/api/analytics/campaigns`)
+    fetch('/api/analytics/campaigns')
       .then(r => r.json())
       .then(d => { if (d.success && d.data) setActiveCampaigns(d.data); })
       .catch(console.error);
@@ -113,7 +110,7 @@ export default function Home() {
     const timeout    = setTimeout(() => controller.abort(), 120_000);
 
     try {
-      const res  = await fetch(`${API_BASE}/api/analytics/generate`, {
+      const res  = await fetch('/api/analytics/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, image: attachedImageBase64 }),
@@ -142,7 +139,7 @@ export default function Home() {
   // ── Delete report ──────────────────────────────────────────────────────────
   const handleDeleteReport = async (id: string | number) => {
     try {
-      const res  = await fetch(`${API_BASE}/api/analytics/reports/${id}`, { method: 'DELETE' });
+      const res  = await fetch(`/api/analytics/reports/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setGeneratedReports(prev => prev.filter(r => r.id !== id));
@@ -160,7 +157,7 @@ export default function Home() {
     if (!selectedCampaignReport || csvRecipients.length === 0) return;
     setIsSending(true);
     try {
-      const res  = await fetch(`${API_BASE}/api/analytics/schedule`, {
+      const res  = await fetch('/api/analytics/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reportId: selectedCampaignReport.id, recipients: csvRecipients, schedule, customCron }),
@@ -183,7 +180,7 @@ export default function Home() {
 
   // ── Delete campaign ────────────────────────────────────────────────────────
   const handleDeleteCampaign = async (campaignId: string) => {
-    const res  = await fetch(`${API_BASE}/api/analytics/campaigns?id=${campaignId}`, { method: 'DELETE' });
+    const res  = await fetch(`/api/analytics/campaigns?id=${campaignId}`, { method: 'DELETE' });
     const data = await res.json();
     if (data.success) {
       setActiveCampaigns(prev => prev.filter(c => c.campaignId !== campaignId));

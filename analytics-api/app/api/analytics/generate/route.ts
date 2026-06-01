@@ -37,23 +37,38 @@ async function getSystemAuthToken(): Promise<string | null> {
 }
 
 // ── OpenAI call ────────────────────────────────────────────────────────────
-async function callOpenAI(messages: { role: string; content: any }[]): Promise<string | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) { console.error('[BFF] OPENAI_API_KEY missing'); return null; }
-
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({ model: 'gpt-4o', messages, stream: false }),
-    signal: AbortSignal.timeout(90_000),
-  });
-
-  if (!res.ok) {
-    console.error('[BFF] OpenAI error:', res.status, await res.text().catch(() => ''));
+async function callOpenAI(messages: { role: string; content: any }[], token: string | null = null): Promise<string | null> {
+  const baseUrl = process.env.LIBRECHAT_URL || 'https://libre-l4iz.onrender.com';
+  const url = `${baseUrl.replace(/\/$/, '')}/api/v1/chat/completions`;
+  
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else if (process.env.OPENAI_API_KEY) {
+    headers['Authorization'] = `Bearer ${process.env.OPENAI_API_KEY}`;
+  } else {
+    console.error('[BFF] Missing Auth token or OPENAI_API_KEY');
     return null;
   }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || null;
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model: 'gpt-4o', messages, stream: false }),
+      signal: AbortSignal.timeout(90_000),
+    });
+
+    if (!res.ok) {
+      console.error('[BFF] LibreChat/OpenAI error:', res.status, await res.text().catch(() => ''));
+      return null;
+    }
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch (err: any) {
+    console.error('[BFF] Fetch to AI endpoint failed:', err.message);
+    return null;
+  }
 }
 
 // ── STEP 1: Fetch ClickHouse schema ───────────────────────────────────────
@@ -103,7 +118,7 @@ async function fetchSchema(): Promise<{ tables: string; sample: string }> {
 }
 
 // ── STEP 2: AI generates SQL ───────────────────────────────────────────────
-async function generateSQL(userQuery: string, schema: { tables: string; sample: string }): Promise<string | null> {
+async function generateSQL(userQuery: string, schema: { tables: string; sample: string }, token: string | null): Promise<string | null> {
   if (!schema.tables) return null;
 
   const content = await callOpenAI([
@@ -124,7 +139,7 @@ async function generateSQL(userQuery: string, schema: { tables: string; sample: 
       role: 'user',
       content: `User Request: ${userQuery}\n\nDatabase Schema:\n${schema.tables}\n\nSample Data:\n${schema.sample}`,
     },
-  ]);
+  ], token);
 
   if (!content || content.trim() === 'CANNOT_QUERY') {
     console.log('[BFF Pipeline] AI could not generate SQL for this query');
@@ -192,6 +207,7 @@ async function generateChart(
   rows: any[],
   sql: string,
   image: string | null,
+  token: string | null
 ): Promise<{ htmlMarkup: string; summary: string } | null> {
 
   const dataContext = rows.length > 0
@@ -208,7 +224,7 @@ async function generateChart(
   const content = await callOpenAI([
     { role: 'system', content: CHART_SYSTEM_PROMPT },
     { role: 'user',   content: userMessage },
-  ]);
+  ], token);
 
   if (!content) return null;
 
@@ -241,7 +257,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    await getSystemAuthToken(); // provision user if needed
+    const token = await getSystemAuthToken(); // provision user if needed
 
     let sql     = '';
     let dataset: any[] = [];
@@ -252,7 +268,7 @@ export async function POST(req: Request) {
 
     if (schema.tables) {
       console.log('[BFF Pipeline] Step 2: Generating SQL...');
-      const generatedSQL = await generateSQL(query, schema);
+      const generatedSQL = await generateSQL(query, schema, token);
 
       if (generatedSQL) {
         sql = generatedSQL;
@@ -266,7 +282,7 @@ export async function POST(req: Request) {
     }
 
     console.log('[BFF Pipeline] Step 4: Generating HTML chart...');
-    const aiResult = await generateChart(query, dataset, sql, image || null);
+    const aiResult = await generateChart(query, dataset, sql, image || null, token);
 
     if (!aiResult?.htmlMarkup) {
       return NextResponse.json(

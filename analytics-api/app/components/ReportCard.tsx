@@ -37,7 +37,8 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
     setExporting(format);
     setShowDownload(false);
     try {
-      const res = await fetch(`/api/analytics/export/${report.id}?format=${format}`);
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://libre-l4iz.onrender.com';
+      const res = await fetch(`${API_BASE}/api/analytics/export/${report.id}?format=${format}`);
       if (!res.ok) throw new Error('Export failed');
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
@@ -170,14 +171,18 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
           {/* Chart preview */}
           <div className="bg-[#F4F2F0] p-4">
             <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm">
-              {report.htmlUrl ? (
-                <iframe
-                  src={report.htmlUrl}
-                  className="w-full bg-white"
-                  style={{ height: '380px', border: 'none' }}
-                  title={`Report ${shortId}`}
-                />
-              ) : (
+              {report.htmlUrl ? (() => {
+                const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://libre-l4iz.onrender.com';
+                const fullUrl = report.htmlUrl.startsWith('/') ? `${API_BASE}${report.htmlUrl}` : report.htmlUrl;
+                return (
+                  <iframe
+                    src={fullUrl}
+                    className="w-full bg-white"
+                    style={{ height: '380px', border: 'none' }}
+                    title={`Report ${shortId}`}
+                  />
+                );
+              })() : (
                 <div className="h-40 flex flex-col items-center justify-center text-slate-300">
                   <Eye className="w-7 h-7 mb-2" />
                   <p className="text-xs font-bold uppercase tracking-widest">Preview unavailable</p>

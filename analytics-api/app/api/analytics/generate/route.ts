@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import jwt from 'jsonwebtoken';
 
+export const maxDuration = 120;
+
 // ── ClickHouse ─────────────────────────────────────────────────────────────
 const clickhouse = createClient({
   url:      process.env.CLICKHOUSE_HOST     || 'http://localhost:8123',

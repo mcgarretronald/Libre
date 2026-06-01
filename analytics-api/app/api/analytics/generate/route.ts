@@ -39,18 +39,15 @@ async function getSystemAuthToken(): Promise<string | null> {
 }
 
 // ── OpenAI call ────────────────────────────────────────────────────────────
-async function callOpenAI(messages: { role: string; content: any }[], token: string | null = null): Promise<string | null> {
-  const baseUrl = process.env.LIBRECHAT_URL || 'https://libre-l4iz.onrender.com';
-  const url = `${baseUrl.replace(/\/$/, '')}/api/v1/chat/completions`;
+async function callOpenAI(messages: { role: string; content: any }[]): Promise<string | null> {
+  const url = 'https://api.openai.com/v1/chat/completions';
   
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  } else if (process.env.OPENAI_API_KEY) {
+  if (process.env.OPENAI_API_KEY) {
     headers['Authorization'] = `Bearer ${process.env.OPENAI_API_KEY}`;
   } else {
     console.error('[BFF] Missing Auth token or OPENAI_API_KEY');
-    return null;
+    throw new Error('Missing OPENAI_API_KEY in Vercel environment variables');
   }
 
   try {
@@ -62,14 +59,15 @@ async function callOpenAI(messages: { role: string; content: any }[], token: str
     });
 
     if (!res.ok) {
-      console.error('[BFF] LibreChat/OpenAI error:', res.status, await res.text().catch(() => ''));
-      return null;
+      const errorText = await res.text().catch(() => '');
+      console.error('[BFF] LibreChat/OpenAI error:', res.status, errorText);
+      throw new Error(`AI API Error (${res.status}): ${errorText}`);
     }
     const data = await res.json();
     return data.choices?.[0]?.message?.content || null;
   } catch (err: any) {
     console.error('[BFF] Fetch to AI endpoint failed:', err.message);
-    return null;
+    throw new Error(`Failed to fetch AI: ${err.message}`);
   }
 }
 
@@ -211,9 +209,11 @@ async function generateChart(
   image: string | null
 ): Promise<{ htmlMarkup: string; summary: string } | null> {
 
-  const dataContext = rows.length > 0
-    ? `\n\nACTUAL QUERY RESULTS (${rows.length} rows — use ONLY these real values for the chart labels and data):\n${JSON.stringify(rows, null, 2)}\n\nSQL that produced this data:\n${sql}`
-    : '\n\nNo data was returned from the database. Use realistic domain-specific estimates based on Kenyan telecoms/health infrastructure context. State clearly in the title this is an estimate.';
+  if (rows.length === 0) {
+    throw new Error('No relevant data found in the database for this query. Please refine your request.');
+  }
+
+  const dataContext = `\n\nACTUAL QUERY RESULTS (${rows.length} rows — use ONLY these real values for the chart labels and data):\n${JSON.stringify(rows, null, 2)}\n\nSQL that produced this data:\n${sql}`;
 
   const userMessage: any = image
     ? [
@@ -291,6 +291,10 @@ export async function POST(req: Request) {
       } else {
         console.log('[BFF Pipeline] No SQL generated — will use schema context only.');
       }
+    }
+
+    if (dataset.length === 0) {
+      throw new Error('No relevant data found in the database. Please verify your schema or query parameters.');
     }
 
     console.log('[BFF Pipeline] Step 4: Generating HTML chart...');

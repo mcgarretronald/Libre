@@ -120,7 +120,7 @@ async function fetchSchema(): Promise<{ tables: string; sample: string }> {
 }
 
 // ── STEP 2: AI generates SQL ───────────────────────────────────────────────
-async function generateSQL(userQuery: string, schema: { tables: string; sample: string }, token: string | null): Promise<string | null> {
+async function generateSQL(userQuery: string, schema: { tables: string; sample: string }): Promise<string | null> {
   if (!schema.tables) return null;
 
   const content = await callOpenAI([
@@ -141,7 +141,7 @@ async function generateSQL(userQuery: string, schema: { tables: string; sample: 
       role: 'user',
       content: `User Request: ${userQuery}\n\nDatabase Schema:\n${schema.tables}\n\nSample Data:\n${schema.sample}`,
     },
-  ], token);
+  ]);
 
   if (!content || content.trim() === 'CANNOT_QUERY') {
     console.log('[BFF Pipeline] AI could not generate SQL for this query');
@@ -208,8 +208,7 @@ async function generateChart(
   userQuery: string,
   rows: any[],
   sql: string,
-  image: string | null,
-  token: string | null
+  image: string | null
 ): Promise<{ htmlMarkup: string; summary: string } | null> {
 
   const dataContext = rows.length > 0
@@ -226,7 +225,7 @@ async function generateChart(
   const content = await callOpenAI([
     { role: 'system', content: CHART_SYSTEM_PROMPT },
     { role: 'user',   content: userMessage },
-  ], token);
+  ]);
 
   if (!content) return null;
 
@@ -237,7 +236,18 @@ async function generateChart(
     htmlMarkup = artifactMatch[1].trim().replace(/^```html\s*/i, '').replace(/```\s*$/i, '');
   } else {
     const htmlMatch = content.match(/<!DOCTYPE html>[\s\S]*<\/html>/i);
-    if (htmlMatch) htmlMarkup = htmlMatch[0];
+    if (htmlMatch) {
+      htmlMarkup = htmlMatch[0];
+    } else {
+      // Fallback: extract anything between ```html and ```
+      const fenceMatch = content.match(/```html\s*([\s\S]*?)```/i);
+      if (fenceMatch) {
+        htmlMarkup = fenceMatch[1].trim();
+      } else if (content.includes('<html') || content.includes('<div')) {
+        // Just take the whole content if it has HTML tags
+        htmlMarkup = content;
+      }
+    }
   }
 
   // Summary = text BEFORE the artifact block (the email body)
@@ -259,7 +269,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    const token = await getSystemAuthToken(); // provision user if needed
+    await getSystemAuthToken(); // provision user if needed
 
     let sql     = '';
     let dataset: any[] = [];
@@ -270,7 +280,7 @@ export async function POST(req: Request) {
 
     if (schema.tables) {
       console.log('[BFF Pipeline] Step 2: Generating SQL...');
-      const generatedSQL = await generateSQL(query, schema, token);
+      const generatedSQL = await generateSQL(query, schema);
 
       if (generatedSQL) {
         sql = generatedSQL;
@@ -284,7 +294,7 @@ export async function POST(req: Request) {
     }
 
     console.log('[BFF Pipeline] Step 4: Generating HTML chart...');
-    const aiResult = await generateChart(query, dataset, sql, image || null, token);
+    const aiResult = await generateChart(query, dataset, sql, image || null);
 
     if (!aiResult?.htmlMarkup) {
       return NextResponse.json(

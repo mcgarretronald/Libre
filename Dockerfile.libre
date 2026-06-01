@@ -15,3 +15,16 @@ RUN npm run build:client
 
 FROM ghcr.io/danny-avila/librechat:latest
 COPY --from=builder /app/client/dist /app/client/dist
+
+# Add Cron Worker
+USER root
+RUN mkdir -p /app/cron
+COPY analytics-api/cron-worker.js /app/cron/cron-worker.js
+
+# Install required dependencies for cron worker
+WORKDIR /app/cron
+RUN npm install mongodb node-cron nodemailer
+
+WORKDIR /app
+# Start LibreChat Backend and Cron Worker simultaneously
+CMD ["sh", "-c", "node /app/cron/cron-worker.js & npm run backend"]

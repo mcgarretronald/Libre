@@ -1,6 +1,8 @@
 version: '3.8'
 
 services:
+
+  # Next.js web portal
   portal-web:
     build: .
     container_name: jacaranda-portal-web
@@ -13,13 +15,14 @@ services:
     networks:
       - portal-network
 
+  # Background cron worker that sends campaign emails
   portal-cron:
     build: .
     container_name: jacaranda-portal-cron
     restart: unless-stopped
     env_file:
       - .env.local
-    command: ["npm", "run", "cron"]
+    command: ["node", "cron-worker.js"]
     networks:
       - portal-network
 

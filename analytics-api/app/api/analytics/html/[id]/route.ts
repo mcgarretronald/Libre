@@ -1,14 +1,15 @@
 import { MongoClient } from 'mongodb';
 
-const MONGO_URI =
-  process.env.MONGO_URI ||
-  'mongodb+srv://mcgarretronald_db_user:kYiKPjPnzfzQ4EXU@cluster0.gz3v4x7.mongodb.net/LibreChat?appName=Cluster0';
+// MONGO_URI must be set in your environment. Never hardcode credentials here.
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
 
 declare global {
   // eslint-disable-next-line no-var
   var _htmlRouteMongoPromise: Promise<MongoClient> | undefined;
 }
 
+// Reuse the MongoDB connection across hot reloads in development
 let clientPromise: Promise<MongoClient>;
 if (!global._htmlRouteMongoPromise) {
   const client = new MongoClient(MONGO_URI);
@@ -48,7 +49,6 @@ export async function GET(
     }
 
     if (report.htmlMarkup) {
-      // Inject Jacaranda branded frame around LibreChat's HTML artifact
       const wrapped = injectBrandFrame(report.htmlMarkup, {
         query: report.query,
         id: String(id),
@@ -59,7 +59,7 @@ export async function GET(
       return new Response(wrapped, { status: 200, headers: SECURITY_HEADERS });
     }
 
-    // Fallback: render tabular data if no htmlMarkup stored
+    // Fall back to a plain table if no HTML markup was stored
     const dataset = (() => {
       try {
         return JSON.parse(report.details || '[]');
@@ -80,7 +80,6 @@ export async function GET(
   }
 }
 
-// ── Inject a thin Jacaranda header/footer around LibreChat's artifact HTML ─
 interface FrameContext {
   query: string;
   id: string;
@@ -89,17 +88,10 @@ interface FrameContext {
   fallbackSimulated?: boolean;
 }
 
+// Wraps the AI-generated HTML artifact in a minimal branded container
 function injectBrandFrame(artifactHtml: string, ctx: FrameContext): string {
-  const primary = ctx.brandColors?.primary || '#FF5A1F';
-  const secondary = ctx.brandColors?.secondary || '#7C73C0';
-  const date = new Date(ctx.timestamp).toLocaleString('en-KE', {
-    timeZone: 'Africa/Nairobi',
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  });
-
   let wrapped = artifactHtml;
-  // Just add clean padding wrapper — no topbar, no footer banner
+
   if (wrapped.match(/<body[^>]*>/i)) {
     wrapped = wrapped.replace(/(<body[^>]*>)/i, `$1\n<div class="artifact-body" style="min-height:300px;">\n`);
   } else {
@@ -115,6 +107,7 @@ function injectBrandFrame(artifactHtml: string, ctx: FrameContext): string {
   return wrapped;
 }
 
+// Renders a simple HTML table when no chart markup is available
 function buildTabularFallback(report: any, dataset: any[]): string {
   const primary = report.brandColors?.primary || '#FF5A1F';
   const keys = dataset.length ? Object.keys(dataset[0]) : [];

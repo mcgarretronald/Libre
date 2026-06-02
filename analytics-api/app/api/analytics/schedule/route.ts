@@ -1,25 +1,29 @@
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 
+// MONGO_URI must be set in your environment. Never hardcode credentials here.
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
+
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
     const { reportId, recipients, schedule, customCron } = payload;
-    
+
     if (!reportId || !recipients || recipients.length === 0) {
       return NextResponse.json({ error: 'Missing required campaign data' }, { status: 400 });
     }
 
-    // Determine the exact cron string
+    // Convert the schedule label to a cron expression
     let cronExpression = '';
     if (schedule === 'immediate') {
       cronExpression = 'immediate';
     } else if (schedule === 'daily') {
-      cronExpression = '0 8 * * *'; // 8 AM Daily
+      cronExpression = '0 8 * * *'; // 8 AM every day
     } else if (schedule === 'weekly') {
-      cronExpression = '0 9 * * 1'; // 9 AM Monday
+      cronExpression = '0 9 * * 1'; // 9 AM every Monday
     } else if (schedule === 'monthly') {
-      cronExpression = '0 9 1 * *'; // 9 AM 1st of Month
+      cronExpression = '0 9 1 * *'; // 9 AM on the 1st of each month
     } else if (schedule === 'custom') {
       cronExpression = customCron;
     }
@@ -35,49 +39,37 @@ export async function POST(req: Request) {
       scheduleType: schedule,
       cronExpression,
       status: schedule === 'immediate' ? 'dispatched' : 'scheduled',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
     };
 
-    // Store in MongoDB
-    const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://mcgarretronald_db_user:kYiKPjPnzfzQ4EXU@cluster0.gz3v4x7.mongodb.net/?appName=Cluster0';
-    const client = new MongoClient(MONGO_URI);
+    // Save the campaign to MongoDB
+    const client = new MongoClient(MONGO_URI!);
     await client.connect();
     const db = client.db('LibreChat');
-    
     await db.collection('jacaranda_campaigns').insertOne(campaign);
-    
     await client.close();
 
-    // Notify cron worker
+    // Tell the cron worker about the new campaign
     try {
-      if (schedule === 'immediate') {
-        await fetch('http://portal-cron:4000/dispatch-immediate/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(campaign)
-        });
-      } else {
-        await fetch('http://portal-cron:4000/start/', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(campaign)
-        });
-      }
+      const endpoint = schedule === 'immediate' ? 'dispatch-immediate' : 'start';
+      await fetch(`http://portal-cron:4000/${endpoint}/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(campaign),
+      });
     } catch (webhookErr) {
-      console.error('Failed to notify cron worker:', webhookErr);
+      // Not fatal — the cron worker will pick it up on next poll
+      console.error('[Schedule] Could not notify cron worker:', webhookErr);
     }
 
     return NextResponse.json({
       success: true,
-      message: schedule === 'immediate' ? 'Campaign dispatched immediately' : 'Campaign successfully scheduled via Cron',
-      campaign
+      message: schedule === 'immediate' ? 'Campaign dispatched immediately' : 'Campaign scheduled',
+      campaign,
     });
 
   } catch (error: any) {
-    console.error('Campaign Scheduling Error:', error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    console.error('[Schedule] Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

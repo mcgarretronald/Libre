@@ -1,12 +1,15 @@
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://mcgarretronald_db_user:kYiKPjPnzfzQ4EXU@cluster0.gz3v4x7.mongodb.net/?appName=Cluster0';
+// MONGO_URI must be set in your environment. Never hardcode credentials here.
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
+
 const CRON_WORKER_URL = process.env.CRON_WORKER_URL || 'http://jacaranda-portal-cron:4000';
 
 export async function GET() {
   try {
-    const client = new MongoClient(MONGO_URI);
+    const client = new MongoClient(MONGO_URI!);
     await client.connect();
     const db = client.db('LibreChat');
 
@@ -48,7 +51,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Campaign ID is required' }, { status: 400 });
     }
 
-    const client = new MongoClient(MONGO_URI);
+    const client = new MongoClient(MONGO_URI!);
     await client.connect();
     const db = client.db('LibreChat');
 

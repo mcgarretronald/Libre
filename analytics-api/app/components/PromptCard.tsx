@@ -21,10 +21,10 @@ export function PromptCard({
   return (
     <form
       onSubmit={handleGenerateReport}
-      className="bg-white rounded-2xl overflow-hidden transition-shadow"
+      className="bg-card rounded-2xl overflow-hidden transition-all shadow-sm"
       style={{
-        border: '1.5px solid #cbd5e1',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.08), 0 8px 32px rgba(59,20,60,0.06)',
+        border: '1.5px solid hsl(var(--border))',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 8px 32px rgba(59,20,60,0.04)',
       }}
     >
       {/* Attached image preview */}
@@ -76,8 +76,8 @@ export function PromptCard({
           }}
           disabled={isProcessing}
           placeholder={isProcessing ? 'Generating your report…' : 'e.g. Show tower distribution by region, or top facilities by patient load…'}
-          className="flex-1 bg-transparent text-[14px] font-medium focus:outline-none resize-none leading-relaxed py-1.5 placeholder-slate-400"
-          style={{ color: '#1e293b', minHeight: '36px', maxHeight: '140px' }}
+          className="flex-1 bg-transparent text-[14px] font-medium focus:outline-none resize-none leading-relaxed py-1.5 placeholder-muted-foreground text-foreground"
+          style={{ minHeight: '36px', maxHeight: '140px' }}
           rows={1}
         />
 
@@ -94,7 +94,7 @@ export function PromptCard({
 
       {/* Hint bar */}
       <div className="px-4 pb-2.5 flex items-center justify-between">
-        <p className="text-[10px] text-slate-300 font-medium">Press Enter to generate · Shift+Enter for new line</p>
+        <p className="text-[10px] text-muted-foreground/60 font-medium">Press Enter to generate · Shift+Enter for new line</p>
         {isProcessing && (
           <div className="flex items-center gap-1.5">
             <div className="flex gap-0.5">

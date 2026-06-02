@@ -54,9 +54,9 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
   };
 
   return (
-    <div className={`bg-white rounded-xl border transition-all duration-200 group relative
+    <div className={`bg-card rounded-xl border transition-all duration-200 group relative
       ${showDownload ? 'overflow-visible z-20' : 'overflow-hidden z-10'}
-      ${expanded ? 'border-[#3B143C]/20 shadow-md' : 'border-black/7 shadow-sm hover:shadow-md hover:border-slate-300'}`}>
+      ${expanded ? 'border-[#3B143C]/30 shadow-md dark:border-[#E06A55]/20' : 'border-border shadow-sm hover:shadow-md hover:border-border/80'}`}>
 
       {/* ── Collapsed row ── */}
       <div className="flex items-center min-w-0">
@@ -67,24 +67,24 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
           onClick={() => setExpanded(p => !p)}
         >
           <div className={`shrink-0 w-2 h-2 rounded-full ${report.fallbackSimulated ? 'bg-amber-400' : 'bg-[#1E6B65]'}`} />
-          <div className="shrink-0 w-7 h-7 rounded-lg bg-[#3B143C]/5 flex items-center justify-center">
-            <BarChart2 className="w-3.5 h-3.5 text-[#3B143C]/50" />
+          <div className="shrink-0 w-7 h-7 rounded-lg bg-[#3B143C]/8 dark:bg-[#3B143C]/20 flex items-center justify-center">
+            <BarChart2 className="w-3.5 h-3.5 text-[#3B143C]/60 dark:text-[#E06A55]/60" />
           </div>
-          <span className="flex-1 text-[13px] font-semibold text-slate-800 truncate pr-4 text-left">
+          <span className="flex-1 text-[13px] font-semibold text-foreground truncate pr-4 text-left">
             {report.query.length > 80 ? report.query.slice(0, 80) + '…' : report.query}
           </span>
           <div className="shrink-0 flex items-center gap-3">
             {report.rowCount !== undefined && (
-              <span className="hidden md:flex items-center gap-1 text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-lg">
+              <span className="hidden md:flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-muted px-2 py-1 rounded-lg">
                 <Database className="w-2.5 h-2.5" />
                 {report.rowCount} rows
               </span>
             )}
             <div className="hidden sm:flex flex-col items-end">
-              <span className="text-[11px] font-bold text-slate-500">{dateStr}</span>
-              <span className="text-[10px] text-slate-400">{timeStr}</span>
+              <span className="text-[11px] font-bold text-muted-foreground">{dateStr}</span>
+              <span className="text-[10px] text-muted-foreground/60">{timeStr}</span>
             </div>
-            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+            <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
           </div>
         </button>
 
@@ -114,17 +114,17 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
             {showDownload && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowDownload(false)} />
-                <div className="absolute right-0 top-8 z-50 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden w-40 animate-in fade-in slide-in-from-top-1 duration-150">
+                <div className="absolute right-0 top-8 z-50 bg-popover border border-border rounded-xl shadow-xl overflow-hidden w-40 animate-in fade-in slide-in-from-top-1 duration-150">
                   <button
                     onClick={() => handleExport('pdf')}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors text-left border-b border-slate-100"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-foreground hover:bg-accent transition-colors text-left border-b border-border"
                   >
                     <FileText className="w-4 h-4 text-[#E06A55]" />
                     Download PDF
                   </button>
                   <button
                     onClick={() => handleExport('png')}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors text-left"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-sm font-semibold text-foreground hover:bg-accent transition-colors text-left"
                   >
                     <Image className="w-4 h-4 text-[#1E6B65]" />
                     Download PNG
@@ -146,16 +146,16 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
 
       {/* ── Expanded content ── */}
       {expanded && (
-        <div className="border-t border-slate-100 animate-in slide-in-from-top-1 fade-in duration-200">
+        <div className="border-t border-border animate-in slide-in-from-top-1 fade-in duration-200">
 
           {/* AI Summary */}
           {report.summary && (
-            <div className="px-5 py-4 bg-gradient-to-r from-slate-50 to-white border-b border-slate-100">
+            <div className="px-5 py-4 bg-gradient-to-r from-muted/50 to-card border-b border-border">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 w-1 min-h-[2rem] rounded-full bg-[#E06A55] shrink-0" />
                 <div>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">AI Summary</p>
-                  <p className="text-[13px] text-slate-700 leading-relaxed">{report.summary}</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1.5">AI Summary</p>
+                  <p className="text-[13px] text-foreground leading-relaxed">{report.summary}</p>
                   {report.fallbackSimulated && (
                     <p className="text-[11px] text-amber-600 font-semibold mt-2 flex items-center gap-1.5">
                       <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
@@ -168,8 +168,8 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
           )}
 
           {/* Chart preview */}
-          <div className="bg-[#F4F2F0] p-4">
-            <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+          <div className="bg-muted/40 p-4">
+            <div className="rounded-xl overflow-hidden border border-border bg-card shadow-sm">
               {report.htmlUrl ? (
                 <iframe
                   src={report.htmlUrl}
@@ -187,7 +187,7 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
           </div>
 
           {/* Action bar */}
-          <div className="flex items-center justify-between px-5 py-3 bg-white border-t border-slate-100">
+          <div className="flex items-center justify-between px-5 py-3 bg-card border-t border-border">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => onDispatch(report)}
@@ -202,7 +202,7 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
               <div className="relative">
                 <button
                   onClick={() => setShowDownload(p => !p)}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider text-foreground bg-muted hover:bg-accent transition-colors"
                 >
                   {exporting ? (
                     <div className="w-3 h-3 border-2 border-slate-400 border-t-slate-700 rounded-full animate-spin" />
@@ -237,7 +237,7 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
               <button
                 onClick={() => setShowTrace(p => !p)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors ${
-                  showTrace ? 'bg-[#3B143C] text-white' : 'text-slate-500 hover:bg-slate-100'
+                  showTrace ? 'bg-[#3B143C] text-white' : 'text-muted-foreground hover:bg-accent'
                 }`}
               >
                 <Terminal className="w-3.5 h-3.5" />
@@ -247,7 +247,7 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
 
             <button
               onClick={() => onDelete(report.id)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold text-slate-400 hover:text-red-500 hover:bg-red-50 transition-all"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all"
             >
               <Trash2 className="w-3.5 h-3.5" />
               Delete

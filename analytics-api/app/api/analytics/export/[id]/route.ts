@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 
-const MONGO_URI =
-  process.env.MONGO_URI ||
-  'mongodb+srv://mcgarretronald_db_user:kYiKPjPnzfzQ4EXU@cluster0.gz3v4x7.mongodb.net/?appName=Cluster0';
+// MONGO_URI must be set in your environment. Never hardcode credentials here.
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
 
 export async function GET(
   req: Request,
@@ -14,10 +14,10 @@ export async function GET(
   const { id } = await params;
   const reportId = parseInt(id, 10);
 
-  // Fetch the HTML from MongoDB
+  // Fetch the stored HTML markup from MongoDB
   let htmlMarkup = '';
   try {
-    const mongo = new MongoClient(MONGO_URI);
+    const mongo = new MongoClient(MONGO_URI!);
     await mongo.connect();
     const doc = await mongo
       .db('LibreChat')
@@ -29,10 +29,10 @@ export async function GET(
     }
     htmlMarkup = doc.htmlMarkup;
   } catch (err: any) {
-    return NextResponse.json({ error: 'DB error: ' + err.message }, { status: 500 });
+    return NextResponse.json({ error: 'Database error: ' + err.message }, { status: 500 });
   }
 
-  // Launch puppeteer
+  // Use puppeteer to render the HTML and export as PDF or PNG
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const puppeteer = (await import('puppeteer-core' as any)).default;
@@ -40,7 +40,7 @@ export async function GET(
     const browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
       defaultViewport: { width: 800, height: 600 },
-      executablePath: '/usr/bin/chromium-browser',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
       headless: true,
     });
 
@@ -54,17 +54,17 @@ export async function GET(
     let filename: string;
 
     if (format === 'png') {
-      rawBuffer    = await page.screenshot({ type: 'png', fullPage: true });
-      contentType  = 'image/png';
-      filename     = `jacaranda-report-${reportId}.png`;
+      rawBuffer   = await page.screenshot({ type: 'png', fullPage: true });
+      contentType = 'image/png';
+      filename    = `jacaranda-report-${reportId}.png`;
     } else {
-      rawBuffer    = await page.pdf({
+      rawBuffer   = await page.pdf({
         format: 'A4',
         printBackground: true,
         margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
       });
-      contentType  = 'application/pdf';
-      filename     = `jacaranda-report-${reportId}.pdf`;
+      contentType = 'application/pdf';
+      filename    = `jacaranda-report-${reportId}.pdf`;
     }
 
     await browser.close();

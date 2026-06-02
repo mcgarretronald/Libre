@@ -92,12 +92,12 @@ function CampaignRow({ camp, onDelete }: { camp: Campaign; onDelete: (id: string
   const tags = [scheduleLabel, `${camp.recipients?.length ?? 0} recipients`];
 
   return (
-    <div className="group border-b border-slate-100 last:border-0 px-6 py-5 hover:bg-slate-50/50 transition-colors">
+    <div className="group border-b border-border last:border-0 px-6 py-5 hover:bg-accent/40 transition-colors">
       <div className="flex items-start gap-4">
 
         {/* Icon */}
-        <div className="shrink-0 mt-0.5 w-10 h-10 rounded-xl bg-[#3B143C]/8 flex items-center justify-center">
-          <Send className="w-4 h-4 text-[#3B143C]/60" />
+        <div className="shrink-0 mt-0.5 w-10 h-10 rounded-xl bg-[#3B143C]/8 dark:bg-[#3B143C]/20 flex items-center justify-center">
+          <Send className="w-4 h-4 text-[#3B143C]/60 dark:text-[#E06A55]/60" />
         </div>
 
         {/* Content */}
@@ -106,10 +106,10 @@ function CampaignRow({ camp, onDelete }: { camp: Campaign; onDelete: (id: string
           {/* Title row */}
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="min-w-0">
-              <h3 className="text-[14px] font-bold text-slate-900 leading-snug">
+              <h3 className="text-[14px] font-bold text-foreground leading-snug">
                 {title.length > 70 ? title.slice(0, 70) + '…' : title}
               </h3>
-              <p className="text-[12px] text-slate-400 mt-0.5 leading-relaxed">
+              <p className="text-[12px] text-muted-foreground mt-0.5 leading-relaxed">
                 {description}
               </p>
             </div>
@@ -117,11 +117,11 @@ function CampaignRow({ camp, onDelete }: { camp: Campaign; onDelete: (id: string
             {/* Right: recipient + status + menu */}
             <div className="flex items-center gap-3 shrink-0 mt-0.5">
               <div className="flex items-center gap-1 text-slate-400">
-                <span className="text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-0.5 flex items-center gap-1">
+                <span className="text-[11px] font-semibold border border-border rounded-lg px-2 py-0.5 flex items-center gap-1 text-muted-foreground">
                   <Users className="w-3 h-3" />
                   {camp.recipients?.length ?? 0}
                 </span>
-                <span className="text-[11px] font-semibold border border-slate-200 rounded-lg px-2 py-0.5 flex items-center gap-1">
+                <span className="text-[11px] font-semibold border border-border rounded-lg px-2 py-0.5 flex items-center gap-1 text-muted-foreground">
                   <Clock className="w-3 h-3" />
                   {scheduleLabel}
                 </span>
@@ -163,7 +163,7 @@ function CampaignRow({ camp, onDelete }: { camp: Campaign; onDelete: (id: string
           </div>
 
           {/* Stats row */}
-          <div className="flex items-center gap-8 mt-4 pt-3 border-t border-slate-100">
+          <div className="flex items-center gap-8 mt-4 pt-3 border-t border-border">
             <BigStat value={sent}    label={`Delivered\nLast 30 Days`} />
             <BigStat value={opened}  label={`Opened\nLast 30 Days`}   />
             <BigStat value={clicked} label={`Clicked\nLast 30 Days`}  />
@@ -188,7 +188,7 @@ export function CampaignList({ campaigns, onDelete, onNewCampaign }: CampaignLis
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h2 className="text-[18px] font-black text-slate-900">Campaigns</h2>
+          <h2 className="text-[18px] font-black text-foreground">Campaigns</h2>
           <span className="text-[11px] font-black text-white bg-[#3B143C] px-2 py-0.5 rounded-full">
             {campaigns.length}
           </span>
@@ -231,14 +231,14 @@ export function CampaignList({ campaigns, onDelete, onNewCampaign }: CampaignLis
       </div>
 
       {/* Main list */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
         {shown.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-4">
               <Calendar className="w-5 h-5 text-slate-300" />
             </div>
-            <p className="text-sm font-bold text-slate-500">No {tab} campaigns yet</p>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs">
+            <p className="text-sm font-bold text-muted-foreground">No {tab} campaigns yet</p>
+            <p className="text-xs text-muted-foreground/60 mt-1 max-w-xs">
               {tab === 'active'
                 ? 'Generate a report and dispatch it as a campaign to get started.'
                 : 'Sent campaigns will appear here.'}

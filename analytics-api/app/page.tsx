@@ -1,330 +1,379 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { CheckCircle2, AlertCircle, FileText, Search } from 'lucide-react';
-
-import { Sidebar }        from './components/Sidebar';
-import { PromptCard }     from './components/PromptCard';
-import { ProgressCard }   from './components/ProgressCard';
-import { ReportCard }     from './components/ReportCard';
-import { CampaignModal }   from './components/CampaignModal';
-import { CampaignList }   from './components/CampaignList';
+import React, { useState, useEffect, useRef } from 'react';
+import { Shield, Database, Settings2, ChevronDown, X } from 'lucide-react';
+import { Sidebar } from './components/Sidebar';
+import { PromptCard } from './components/PromptCard';
+import { ProgressCard } from './components/ProgressCard';
+import { ReportCard } from './components/ReportCard';
+import { CampaignDrawer } from './components/CampaignDrawer';
+import { CampaignList } from './components/CampaignList';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
+import { Badge } from './components/ui/badge';
+import { useTheme } from './components/ThemeProvider';
 
 type Stage = 'idle' | 'schema' | 'sql' | 'remote' | 'complete';
 
-export default function Home() {
+interface Report {
+  id: string | number;
+  query: string;
+  summary?: string;
+  timestamp: string;
+  htmlUrl?: string;
+  sql?: string;
+  details?: string;
+  status?: string;
+  rowCount?: number;
+  fallbackSimulated?: boolean;
+}
+
+interface Recipient { email: string; name?: string; }
+
+export default function CorporatePortal() {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+
+  // ── View ─────────────────────────────────────────────────────────
   const [activeView, setActiveView] = useState<'generator' | 'campaigner'>('generator');
 
-  // Generation
-  const [chatInput, setChatInput]                     = useState('');
+  // ── Chat / generation ────────────────────────────────────────────
+  const [chatInput, setChatInput] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [generationStage, setGenerationStage] = useState<Stage>('idle');
+  const [reports, setReports] = useState<Report[]>([]);
   const [attachedImageBase64, setAttachedImageBase64] = useState<string | null>(null);
-  const [attachedImageName, setAttachedImageName]     = useState<string | null>(null);
-  const [generationStage, setGenerationStage]         = useState<Stage>('idle');
-  const [generatedReports, setGeneratedReports]       = useState<any[]>([]);
-  const [reportSearch, setReportSearch]               = useState('');
+  const [attachedImageName, setAttachedImageName] = useState<string | null>(null);
 
-  // Campaigns
-  const [activeCampaigns, setActiveCampaigns]             = useState<any[]>([]);
-  const [selectedCampaignReport, setSelectedCampaignReport] = useState<any | null>(null);
-  const [isCampaignDrawerOpen, setIsCampaignDrawerOpen]   = useState(false);
-  const [csvRecipients, setCsvRecipients]                 = useState<{ email: string; name?: string }[]>([]);
-  const [schedule, setSchedule]                           = useState('immediate');
-  const [customCron, setCustomCron]                       = useState('');
-  const [isSending, setIsSending]                         = useState(false);
+  // ── Settings tray ────────────────────────────────────────────────
+  const [showSettings, setShowSettings] = useState(false);
+  const [connections, setConnections] = useState<any[]>([]);
+  const [databaseId, setDatabaseId] = useState('');
+  const [brandColors, setBrandColors] = useState({
+    primary: '#4A154B',
+    secondary: '#E06A55',
+    accent: '#1E6B65',
+  });
 
-  // Toast
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 5000);
-  };
+  // ── Campaign drawer ───────────────────────────────────────────────
+  const [drawerReport, setDrawerReport] = useState<Report | null>(null);
+  const [csvRecipients, setCsvRecipients] = useState<Recipient[]>([]);
+  const [schedule, setSchedule] = useState('immediate');
+  const [customCron, setCustomCron] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
-  // ── Fetch reports on mount ─────────────────────────────────────────────────
+  // ── Campaign list ─────────────────────────────────────────────────
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+
+  const reportListRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    fetch('/api/analytics/reports')
+    fetch('/api/analytics/connections')
       .then(r => r.json())
-      .then(d => { if (d.success && d.data) setGeneratedReports(d.data); })
+      .then(d => {
+        if (d.success) {
+          setConnections(d.data);
+          if (d.data.length > 0) setDatabaseId(d.data[0].id);
+        }
+      })
       .catch(console.error);
   }, []);
 
-  // ── Fetch campaigns when campaigner view opens ─────────────────────────────
+  useEffect(() => {
+    fetch('/api/analytics/reports')
+      .then(r => r.json())
+      .then(d => { if (d.success && Array.isArray(d.data)) setReports(d.data); })
+      .catch(console.error);
+  }, []);
+
   useEffect(() => {
     if (activeView !== 'campaigner') return;
     fetch('/api/analytics/campaigns')
       .then(r => r.json())
-      .then(d => { if (d.success && d.data) setActiveCampaigns(d.data); })
+      .then(d => { if (d.success && Array.isArray(d.data)) setCampaigns(d.data); })
       .catch(console.error);
   }, [activeView]);
 
-  // ── Image attach ───────────────────────────────────────────────────────────
   const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setAttachedImageName(file.name);
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      setAttachedImageBase64(ev.target?.result as string);
-      setAttachedImageName(file.name);
-    };
+    reader.onload = ev => setAttachedImageBase64(ev.target?.result as string);
     reader.readAsDataURL(file);
-    e.target.value = '';
   };
 
-  // ── CSV parse ──────────────────────────────────────────────────────────────
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const lines = (reader.result as string).split(/\r?\n/);
-      const seen  = new Set<string>();
-      const parsed: { email: string; name?: string }[] = [];
-      lines.forEach(line => {
-        const match = line.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-        if (match) {
-          const email = match[0].toLowerCase();
-          if (!seen.has(email)) {
-            seen.add(email);
-            const parts = line.split(',');
-            parsed.push({ email, name: parts.length >= 2 && !parts[0].includes('@') ? parts[0].trim() : undefined });
-          }
-        }
+  const handleGenerateReport = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isProcessing) return;
+    setIsProcessing(true);
+    setGenerationStage('schema');
+    const t1 = setTimeout(() => setGenerationStage('sql'), 3500);
+    const t2 = setTimeout(() => setGenerationStage('remote'), 7000);
+    try {
+      const res = await fetch('/api/analytics/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: chatInput,
+          databaseId,
+          brandColors,
+          ...(attachedImageBase64 ? { imageBase64: attachedImageBase64 } : {}),
+        }),
       });
-      if (parsed.length) { setCsvRecipients(parsed); showToast(`Loaded ${parsed.length} recipients.`, 'success'); }
-      else showToast('No valid email addresses found.', 'error');
+      const data = await res.json();
+      clearTimeout(t1); clearTimeout(t2);
+      if (data.success) {
+        setGenerationStage('complete');
+        setReports(prev => [{
+          id: data.id, query: chatInput, summary: data.summary,
+          timestamp: new Date().toISOString(),
+          htmlUrl: data.htmlUrl ?? `/api/analytics/html/${data.id}`,
+          sql: data.sql, details: data.details, rowCount: data.rowCount,
+          fallbackSimulated: data.fallbackSimulated,
+        }, ...prev]);
+        setChatInput('');
+        setAttachedImageBase64(null); setAttachedImageName(null);
+        setTimeout(() => setGenerationStage('idle'), 600);
+        setTimeout(() => reportListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 700);
+      }
+    } catch (err) {
+      clearTimeout(t1); clearTimeout(t2);
+      setGenerationStage('idle');
+    } finally { setIsProcessing(false); }
+  };
+
+  const handleDelete = async (id: string | number) => {
+    setReports(p => p.filter(r => r.id !== id));
+    try { await fetch(`/api/analytics/reports/${id}`, { method: 'DELETE' }); } catch (_) {}
+  };
+
+  const handleDispatch = async () => {
+    if (!drawerReport || csvRecipients.length === 0) return;
+    setIsSending(true);
+    try {
+      await fetch('/api/analytics/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reportId: drawerReport.id, recipients: csvRecipients, schedule, customCron }),
+      });
+      setDrawerReport(null); setCsvRecipients([]);
+    } catch (e) { console.error(e); }
+    finally { setIsSending(false); }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const lines = (ev.target?.result as string).split('\n').filter(Boolean);
+      const parsed: Recipient[] = lines.slice(1).map(l => {
+        const [email, name] = l.split(',').map(s => s.trim());
+        return { email, name };
+      }).filter(r => r.email?.includes('@'));
+      setCsvRecipients(prev => [...prev, ...parsed]);
     };
     reader.readAsText(file);
   };
 
-  // ── Generate report ────────────────────────────────────────────────────────
-  const handleGenerateReport = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-
-    const query = chatInput;
-    setChatInput('');
-    setGenerationStage('schema');
-    const t1 = setTimeout(() => setGenerationStage('sql'),    2500);
-    const t2 = setTimeout(() => setGenerationStage('remote'), 5000);
-
-    const controller = new AbortController();
-    const timeout    = setTimeout(() => controller.abort(), 120_000);
-
-    try {
-      const res  = await fetch('/api/analytics/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, image: attachedImageBase64 }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeout);
-      const data = await res.json();
-      if (data.success) {
-        setGeneratedReports(prev => [data.report, ...prev]);
-        showToast('Report generated successfully.', 'success');
-      } else {
-        showToast(data.error || 'Generation failed.', 'error');
-      }
-    } catch (err: any) {
-      clearTimeout(timeout);
-      showToast(err.name === 'AbortError' ? 'Request timed out. Please try again.' : err.message || 'Network error.', 'error');
-    } finally {
-      clearTimeout(t1); clearTimeout(t2);
-      setGenerationStage('complete');
-      setTimeout(() => setGenerationStage('idle'), 2500);
-      setAttachedImageBase64(null);
-      setAttachedImageName(null);
-    }
+  const handleDeleteCampaign = async (id: string) => {
+    setCampaigns(p => p.filter(c => c.campaignId !== id));
+    try { await fetch(`/api/analytics/campaigns/${id}`, { method: 'DELETE' }); } catch (_) {}
   };
 
-  // ── Delete report ──────────────────────────────────────────────────────────
-  const handleDeleteReport = async (id: string | number) => {
-    try {
-      const res  = await fetch(`/api/analytics/reports/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        setGeneratedReports(prev => prev.filter(r => r.id !== id));
-        showToast('Report deleted.', 'success');
-      } else {
-        showToast(data.error || 'Failed to delete.', 'error');
-      }
-    } catch {
-      showToast('Network error.', 'error');
-    }
-  };
+  const activeConnection = connections.find(c => c.id === databaseId);
 
-  // ── Dispatch campaign ──────────────────────────────────────────────────────
-  const handleDispatch = async () => {
-    if (!selectedCampaignReport || csvRecipients.length === 0) return;
-    setIsSending(true);
-    try {
-      const res  = await fetch('/api/analytics/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reportId: selectedCampaignReport.id, recipients: csvRecipients, schedule, customCron }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        setCsvRecipients([]);
-        setIsCampaignDrawerOpen(false);
-        setSelectedCampaignReport(null);
-      } else {
-        showToast(data.error || 'Failed to schedule campaign.', 'error');
-      }
-    } catch {
-      showToast('Network error.', 'error');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  // ── Delete campaign ────────────────────────────────────────────────────────
-  const handleDeleteCampaign = async (campaignId: string) => {
-    const res  = await fetch(`/api/analytics/campaigns?id=${campaignId}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (data.success) {
-      setActiveCampaigns(prev => prev.filter(c => c.campaignId !== campaignId));
-      showToast('Campaign cancelled.', 'success');
-    } else {
-      showToast('Failed to delete campaign.', 'error');
-    }
-  };
-
-  // ── Filtered reports ───────────────────────────────────────────────────────
-  const filteredReports = generatedReports.filter(r =>
-    r.query?.toLowerCase().includes(reportSearch.toLowerCase()) ||
-    r.summary?.toLowerCase().includes(reportSearch.toLowerCase())
-  );
-
-  const isProcessing = generationStage !== 'idle' && generationStage !== 'complete';
-
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen w-full font-sans text-slate-900 overflow-hidden" style={{ background: '#F0EDE9' }}>
+    <div className="flex h-screen overflow-hidden bg-background">
 
       <Sidebar activeView={activeView} setActiveView={setActiveView} isProcessing={isProcessing} />
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Header */}
-        <header className="h-14 flex items-center justify-between px-8 shrink-0 sticky top-0 z-10 border-b border-black/8 backdrop-blur-md" style={{ background: 'rgba(240, 237, 233, 0.92)' }}>
+        {/* ── Header ── */}
+        <header className="h-14 flex items-center justify-between px-6 shrink-0 border-b border-border bg-card transition-colors duration-300">
+          <h1 className="text-[13px] font-bold tracking-wide text-muted-foreground">
+            {activeView === 'generator' ? 'Analytics Portal' : 'Campaign Manager'}
+          </h1>
           <div className="flex items-center gap-3">
-            <h1 className="text-[15px] font-black text-[#3B143C] tracking-tight">
-              {activeView === 'generator' ? 'Analytics Portal' : 'Campaign Hub'}
-            </h1>
-            {isProcessing && (
-              <span className="text-[9px] font-black uppercase tracking-[0.15em] text-[#E06A55] bg-[#E06A55]/10 px-2.5 py-1 rounded-full animate-pulse">
-                Processing
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border" style={{ background: 'rgba(30,107,101,0.08)', borderColor: 'rgba(30,107,101,0.2)' }}>
-            <span className="w-1.5 h-1.5 rounded-full bg-[#1E6B65] animate-pulse" />
-            <span className="text-[10px] font-black text-[#1E6B65] tracking-wide">AI Connected</span>
+            <a
+              href="/databases"
+              className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-lg transition-colors text-muted-foreground hover:text-foreground hover:bg-accent border border-border"
+            >
+              <Database className="w-3 h-3" />
+              Manage Data Sources
+            </a>
+            <Badge
+              variant="outline"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30"
+            >
+              <Shield className="w-3 h-3" />
+              AI Connected
+            </Badge>
           </div>
         </header>
 
-        {/* Toast */}
-        {toast && (
-          <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border animate-in slide-in-from-right-4 duration-300 text-white ${toast.type === 'success' ? 'bg-[#1E6B65] border-[#1E6B65]' : 'bg-red-600 border-red-700'}`}>
-            {toast.type === 'success' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-            <span className="text-sm font-semibold">{toast.message}</span>
-          </div>
-        )}
+        {/* ── Generator ── */}
+        {activeView === 'generator' && (
+          <div className="flex-1 flex flex-col min-h-0">
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-4xl mx-auto w-full px-8 pt-6 pb-4">
-
-            {/* ── GENERATOR VIEW ─────────────────────────────────────── */}
-            {activeView === 'generator' && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-400">
-
-                <ProgressCard generationStage={generationStage} />
-
-                {/* Reports list — shown first */}
-                {generatedReports.length > 0 ? (
-                  <div className="space-y-2">
-                    {/* Section header */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2.5">
-                        <h2 className="text-[13px] font-black text-slate-700 tracking-tight">Reports</h2>
-                        <span className="text-[10px] font-black text-white bg-[#3B143C] px-2 py-0.5 rounded-full">{generatedReports.length}</span>
-                      </div>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                        <input
-                          type="text"
-                          placeholder="Search..."
-                          value={reportSearch}
-                          onChange={e => setReportSearch(e.target.value)}
-                          className="pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:border-[#3B143C] bg-white font-medium w-44 transition-all focus:w-56"
-                        />
-                      </div>
-                    </div>
-
-                    {filteredReports.map(report => (
-                      <ReportCard
-                        key={report.id}
-                        report={report}
-                        onDelete={handleDeleteReport}
-                        onDispatch={(r) => { setSelectedCampaignReport(r); setIsCampaignDrawerOpen(true); }}
-                      />
-                    ))}
+            {/* Report list */}
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              {reports.length === 0 && generationStage === 'idle' ? (
+                <div className="flex flex-col items-center justify-center h-full text-center select-none" style={{ minHeight: '220px' }}>
+                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 bg-muted border border-border">
+                    <svg className="w-6 h-6 text-muted-foreground/40" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                    </svg>
                   </div>
-                ) : (
-                  !isProcessing && (
-                    <div className="flex flex-col items-center justify-center py-20 text-center">
-                      <div className="w-14 h-14 rounded-2xl bg-white border border-slate-200 flex items-center justify-center mb-4 shadow-sm">
-                        <FileText className="w-6 h-6 text-slate-300" />
-                      </div>
-                      <p className="text-sm font-bold text-slate-400">No reports yet</p>
-                      <p className="text-xs text-slate-300 font-medium mt-1">Type a question below to generate your first report</p>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
+                  <p className="text-[13px] font-semibold text-muted-foreground">No reports yet</p>
+                  <p className="text-[12px] mt-1 text-muted-foreground/60">Type a question below to generate your first report</p>
+                </div>
+              ) : (
+                <div ref={reportListRef} className="max-w-3xl mx-auto space-y-3">
+                  {generationStage !== 'idle' && generationStage !== 'complete' && (
+                    <ProgressCard generationStage={generationStage} />
+                  )}
+                  {reports.map(report => (
+                    <ReportCard
+                      key={report.id}
+                      report={report}
+                      onDelete={handleDelete}
+                      onDispatch={r => { setDrawerReport(r); setCsvRecipients([]); setSchedule('immediate'); }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
 
-            {/* ── CAMPAIGNER VIEW ────────────────────────────────────── */}
-            {activeView === 'campaigner' && (
-              <div className="animate-in fade-in slide-in-from-bottom-3 duration-400">
-                <div className="flex items-center gap-2.5 mb-5">
-                  <h2 className="text-[13px] font-black text-slate-700 tracking-tight">Active Campaigns</h2>
-                  {activeCampaigns.length > 0 && (
-                    <span className="text-[10px] font-black text-white bg-[#1E6B65] px-2 py-0.5 rounded-full">{activeCampaigns.length}</span>
+            {/* ── Bottom input zone ── */}
+            <div className="shrink-0 px-6 pb-5 pt-3 border-t border-border bg-background/80 backdrop-blur-sm transition-colors duration-300">
+              <div className="max-w-3xl mx-auto space-y-2">
+
+                {/* Collapsible settings tray */}
+                {showSettings && (
+                  <div className="rounded-2xl px-4 py-3 space-y-3 border border-border bg-card transition-all duration-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        Report Settings
+                      </span>
+                      <button
+                        onClick={() => setShowSettings(false)}
+                        className="w-5 h-5 flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent transition-colors"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                      {/* ClickHouse DB selector — uses shadcn Select */}
+                      <div>
+                        <label className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest mb-1.5 text-muted-foreground">
+                          <Database className="w-2.5 h-2.5" />
+                          ClickHouse Data Warehouse
+                        </label>
+                        {connections.length > 0 ? (
+                          <Select value={databaseId} onValueChange={setDatabaseId}>
+                            <SelectTrigger className="w-full text-[12px] h-9">
+                              <SelectValue placeholder="Select a database…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {connections.map(conn => (
+                                <SelectItem key={conn.id} value={conn.id}>
+                                  {conn.name} — {conn.host}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="text-[11px] font-semibold px-3 py-2 rounded-xl border border-destructive/40 bg-destructive/10 text-destructive">
+                            No connections.{' '}
+                            <a href="/databases" className="underline font-bold hover:opacity-80">
+                              Add ClickHouse →
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Theme color swatches */}
+                      <div>
+                        <label className="block text-[9px] font-black uppercase tracking-widest mb-1.5 text-muted-foreground">
+                          Report Colors
+                        </label>
+                        <div className="flex items-center gap-3 h-9 px-3 rounded-lg border border-border bg-background">
+                          <span className="text-[10px] font-medium text-muted-foreground mr-auto">Override:</span>
+                          {Object.entries(brandColors).map(([key, value]) => (
+                            <div key={key} className="relative group cursor-pointer">
+                              <input
+                                type="color"
+                                value={value}
+                                onChange={e => setBrandColors({ ...brandColors, [key]: e.target.value })}
+                                className="absolute inset-0 w-6 h-6 opacity-0 cursor-pointer z-10"
+                              />
+                              <div
+                                className="w-6 h-6 rounded-full border-2 border-border group-hover:scale-110 transition-transform shadow-sm"
+                                style={{ backgroundColor: value }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Settings toggle row */}
+                <div className="flex items-center justify-between px-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowSettings(p => !p)}
+                    className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest py-0.5 transition-colors"
+                    style={{ color: showSettings ? '#E06A55' : undefined }}
+                    data-active={showSettings}
+                  >
+                    <Settings2 className="w-3 h-3" />
+                    <span className={showSettings ? 'text-[#E06A55]' : 'text-muted-foreground'}>Settings</span>
+                    <ChevronDown className={`w-3 h-3 transition-transform duration-200 text-muted-foreground ${showSettings ? 'rotate-180' : ''}`} />
+                  </button>
+                  {activeConnection && (
+                    <span className="text-[10px] font-semibold flex items-center gap-1 text-[#1E6B65]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#1E6B65] inline-block" />
+                      {activeConnection.name}
+                    </span>
                   )}
                 </div>
-                <CampaignList campaigns={activeCampaigns} onDelete={handleDeleteCampaign} />
+
+                <PromptCard
+                  chatInput={chatInput}
+                  setChatInput={setChatInput}
+                  attachedImageBase64={attachedImageBase64}
+                  setAttachedImageBase64={setAttachedImageBase64}
+                  setAttachedImageName={setAttachedImageName}
+                  handleImageAttach={handleImageAttach}
+                  handleGenerateReport={handleGenerateReport}
+                  isProcessing={isProcessing}
+                />
               </div>
-            )}
-
-          </div>
-        </div>
-
-        {/* ── STICKY BOTTOM PROMPT BAR (generator only) ─────────────── */}
-        {activeView === 'generator' && (
-          <div className="shrink-0 border-t border-black/6 px-8 py-4" style={{ background: 'rgba(240,237,233,0.97)', backdropFilter: 'blur(12px)' }}>
-            <div className="max-w-4xl mx-auto">
-              <PromptCard
-                chatInput={chatInput}
-                setChatInput={setChatInput}
-                attachedImageBase64={attachedImageBase64}
-                setAttachedImageBase64={setAttachedImageBase64}
-                setAttachedImageName={setAttachedImageName}
-                handleImageAttach={handleImageAttach}
-                handleGenerateReport={handleGenerateReport}
-                isProcessing={isProcessing}
-              />
             </div>
           </div>
         )}
 
+        {/* ── Campaigner ── */}
+        {activeView === 'campaigner' && (
+          <div className="flex-1 overflow-y-auto px-6 py-6 bg-background transition-colors duration-300">
+            <div className="max-w-4xl mx-auto">
+              <CampaignList
+                campaigns={campaigns}
+                onDelete={handleDeleteCampaign}
+                onNewCampaign={() => setActiveView('generator')}
+              />
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* Campaign Modal */}
-      {isCampaignDrawerOpen && selectedCampaignReport && (
-        <CampaignModal
-          report={selectedCampaignReport}
+      {drawerReport && (
+        <CampaignDrawer
+          report={drawerReport}
           csvRecipients={csvRecipients}
           setCsvRecipients={setCsvRecipients}
           schedule={schedule}
@@ -334,7 +383,7 @@ export default function Home() {
           isSending={isSending}
           handleDispatch={handleDispatch}
           handleFileChange={handleFileChange}
-          onClose={() => { setIsCampaignDrawerOpen(false); setSelectedCampaignReport(null); }}
+          onClose={() => setDrawerReport(null)}
         />
       )}
     </div>

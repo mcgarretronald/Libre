@@ -1,18 +1,18 @@
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 
-// Initialize MongoDB connection
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://mcgarretronald_db_user:kYiKPjPnzfzQ4EXU@cluster0.gz3v4x7.mongodb.net/LibreChat?appName=Cluster0';
+// MONGO_URI must be set in your environment. Never hardcode credentials here.
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
 
 declare global {
   var _mongoClientPromise: Promise<MongoClient> | undefined;
 }
 
-let client: MongoClient;
+// Reuse the MongoDB connection across hot reloads in development
 let clientPromise: Promise<MongoClient>;
-
 if (!global._mongoClientPromise) {
-  client = new MongoClient(MONGO_URI);
+  const client = new MongoClient(MONGO_URI);
   global._mongoClientPromise = client.connect();
 }
 clientPromise = global._mongoClientPromise;
@@ -20,10 +20,8 @@ clientPromise = global._mongoClientPromise;
 export async function GET() {
   try {
     const client = await clientPromise;
-    // Connect to the DB (it usually extracts the DB name from the URI, or default to 'LibreChat')
-    const db = client.db('LibreChat'); 
-    
-    // Fetch recent Jacaranda reports, sorted by most recent
+    const db = client.db('LibreChat');
+
     const reports = await db
       .collection('jacaranda_reports')
       .find({})
@@ -32,7 +30,7 @@ export async function GET() {
       .project({ _id: 0 })
       .toArray();
 
-    // Strip bulky pdfBase64 blobs and inject pdfUrl and htmlUrl for the UI
+    // Strip large HTML/PDF blobs and replace with URL references for the UI
     const clientReports = reports.map(({ pdfBase64, htmlMarkup, ...r }: any) => ({
       ...r,
       pdfUrl: `/api/analytics/pdf/${r.id}`,
@@ -43,7 +41,7 @@ export async function GET() {
 
     return NextResponse.json({ success: true, data: clientReports });
   } catch (error: any) {
-    console.error('MongoDB Fetch Error:', error);
+    console.error('[Reports] Fetch error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

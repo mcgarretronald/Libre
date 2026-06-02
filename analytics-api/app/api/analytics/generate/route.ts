@@ -1,350 +1,239 @@
-import { createClient } from '@clickhouse/client';
 import { NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
-import jwt from 'jsonwebtoken';
+import { getSession } from '@/lib/auth';
+import { connectToDatabase } from '@/lib/db';
+import { decrypt } from '@/lib/encryption';
+import { internalClient } from '@/lib/clickhouse';
+import { createClient } from '@clickhouse/client';
+import { ObjectId } from 'mongodb';
 
+const LIBRECHAT_URL = (process.env.LIBRECHAT_URL || 'http://localhost:3080').replace(/\/$/, '');
+
+// Allow up to 2 minutes for schema reflection and AI generation
 export const maxDuration = 120;
+export const dynamic = 'force-dynamic';
 
-// ── ClickHouse ─────────────────────────────────────────────────────────────
-const clickhouse = createClient({
-  url:      process.env.CLICKHOUSE_HOST     || 'http://localhost:8123',
-  username: process.env.CLICKHOUSE_USER     || 'default',
-  password: process.env.CLICKHOUSE_PASSWORD || '',
-  database: process.env.CLICKHOUSE_DATABASE || 'default',
-});
+// In-memory cache for database schemas to avoid repeatedly querying the target DB
+const schemaCache = new Map<string, { timestamp: number; schema: any[] }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/librechat';
+// Scores and filters schema tables by keyword relevance to the user query.
+// Keeps the context sent to the AI within a token budget.
+function filterSchema(schema: any[], query: string, maxTokens: number = 4000): string {
+  const normalizedQuery = query.toLowerCase();
+  const keywords = normalizedQuery.split(/\s+/).filter(w => w.length > 3);
 
-// ── Auth token (kept for future LibreChat integration) ─────────────────────
-async function getSystemAuthToken(): Promise<string | null> {
-  const secret = process.env.JWT_SECRET;
-  if (!secret) return null;
-  let client: MongoClient | null = null;
-  try {
-    client = new MongoClient(MONGO_URI);
-    await client.connect();
-    const db    = client.db('LibreChat');
-    const email = 'system_admin@jacaranda.org';
-    let user    = await db.collection('users').findOne({ email });
-    if (!user) {
-      const result = await db.collection('users').insertOne({
-        email, name: 'Jacaranda System Agent', provider: 'local',
-        role: 'ADMIN', createdAt: new Date(), updatedAt: new Date(),
-      });
-      user = { _id: result.insertedId, email };
+  const scoredTables = schema.map(table => {
+    let score = 0;
+    const tableStr = `${table.table} ${table.columns.join(' ')}`.toLowerCase();
+    for (const kw of keywords) {
+      if (tableStr.includes(kw)) score += 2;
     }
-    return jwt.sign({ id: user._id.toString(), email: user.email }, secret, { expiresIn: '1h' });
-  } catch { return null; }
-  finally { if (client) await client.close(); }
+    return { ...table, score };
+  });
+
+  scoredTables.sort((a, b) => b.score - a.score);
+
+  let result = '';
+  let currentTokens = 0;
+
+  for (const table of scoredTables) {
+    const tableDef = `Table "${table.table}": ${table.columns.join(', ')}\n`;
+    const tokens = Math.ceil(tableDef.length / 4);
+    if (currentTokens + tokens > maxTokens) break;
+    result += tableDef;
+    currentTokens += tokens;
+  }
+
+  return result || 'No relevant tables found matching the query context.';
 }
 
-// ── OpenAI call ────────────────────────────────────────────────────────────
-async function callOpenAI(messages: { role: string; content: any }[]): Promise<string | null> {
-  const url = 'https://api.openai.com/v1/chat/completions';
-  
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (process.env.OPENAI_API_KEY) {
-    headers['Authorization'] = `Bearer ${process.env.OPENAI_API_KEY}`;
-  } else {
-    console.error('[BFF] Missing Auth token or OPENAI_API_KEY');
-    throw new Error('Missing OPENAI_API_KEY in Vercel environment variables');
-  }
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ model: 'gpt-4o', messages, stream: false }),
-      signal: AbortSignal.timeout(90_000),
-    });
-
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => '');
-      console.error('[BFF] LibreChat/OpenAI error:', res.status, errorText);
-      throw new Error(`AI API Error (${res.status}): ${errorText}`);
-    }
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content || null;
-  } catch (err: any) {
-    console.error('[BFF] Fetch to AI endpoint failed:', err.message);
-    throw new Error(`Failed to fetch AI: ${err.message}`);
-  }
-}
-
-// ── STEP 1: Fetch ClickHouse schema ───────────────────────────────────────
-async function fetchSchema(): Promise<{ tables: string; sample: string }> {
-  try {
-    // Get tables + columns
-    const colResult = await clickhouse.query({
-      query: `
-        SELECT table, name, type
-        FROM system.columns
-        WHERE database = currentDatabase()
-        ORDER BY table, position
-        LIMIT 120
-      `,
-      format: 'JSONEachRow',
-    });
-    const cols = await colResult.json() as any[];
-
-    // Group by table
-    const tableMap: Record<string, string[]> = {};
-    for (const c of cols) {
-      if (!tableMap[c.table]) tableMap[c.table] = [];
-      tableMap[c.table].push(`${c.name} (${c.type})`);
-    }
-    const tables = Object.entries(tableMap)
-      .map(([t, cs]) => `Table "${t}": ${cs.join(', ')}`)
-      .join('\n');
-
-    // Get 3 sample rows from first table
-    let sample = '';
-    const firstTable = Object.keys(tableMap)[0];
-    if (firstTable) {
-      const sampleResult = await clickhouse.query({
-        query: `SELECT * FROM \`${firstTable}\` LIMIT 3`,
-        format: 'JSONEachRow',
-      });
-      const rows = await sampleResult.json() as any[];
-      sample = JSON.stringify(rows, null, 2);
-    }
-
-    console.log(`[BFF Pipeline] Schema fetched: ${Object.keys(tableMap).length} tables`);
-    return { tables, sample };
-  } catch (err: any) {
-    console.warn('[BFF Pipeline] Schema fetch failed:', err.message);
-    return { tables: '', sample: '' };
-  }
-}
-
-// ── STEP 2: AI generates SQL ───────────────────────────────────────────────
-async function generateSQL(userQuery: string, schema: { tables: string; sample: string }): Promise<string | null> {
-  if (!schema.tables) return null;
-
-  const content = await callOpenAI([
-    {
-      role: 'system',
-      content: [
-        'You are a ClickHouse SQL expert for Jacaranda Health.',
-        'Given the database schema and a user request, write a single ClickHouse SQL SELECT query.',
-        'Rules:',
-        '- Return ONLY the raw SQL query. No markdown, no backticks, no explanation.',
-        '- Use proper ClickHouse syntax.',
-        '- LIMIT results to 100 rows max.',
-        '- Always use actual column names from the schema — never invent column names.',
-        '- If the request cannot be answered with the given schema, return: CANNOT_QUERY',
-      ].join('\n'),
-    },
-    {
-      role: 'user',
-      content: `User Request: ${userQuery}\n\nDatabase Schema:\n${schema.tables}\n\nSample Data:\n${schema.sample}`,
-    },
-  ]);
-
-  if (!content || content.trim() === 'CANNOT_QUERY') {
-    console.log('[BFF Pipeline] AI could not generate SQL for this query');
-    return null;
-  }
-
-  // Strip any accidental markdown fences
-  return content.replace(/^```sql\s*/i, '').replace(/```\s*$/i, '').trim();
-}
-
-// ── STEP 3: Run SQL on ClickHouse ──────────────────────────────────────────
-async function runSQL(sql: string): Promise<{ rows: any[]; error: string | null }> {
-  try {
-    const result = await clickhouse.query({ query: sql, format: 'JSONEachRow' });
-    const rows   = await result.json() as any[];
-    console.log(`[BFF Pipeline] SQL executed. Rows returned: ${rows.length}`);
-    return { rows, error: null };
-  } catch (err: any) {
-    console.error('[BFF Pipeline] SQL execution failed:', err.message);
-    return { rows: [], error: err.message };
-  }
-}
-
-// ── STEP 4: AI generates HTML chart from real data ─────────────────────────
-const CHART_SYSTEM_PROMPT = `You are the Jacaranda Health Analytics AI. You produce clean, production-ready HTML data visualizations.
-
-=== STRICT RULES ===
-RULE 1 — HEADER: Include a clean branded header bar at the top of the page with: Jacaranda Health brand name on the left, the report title centered, and today's date on the right. Style it with background:#3B143C, color:#fff, padding:14px 28px.
-RULE 2 — NO PLACEHOLDER LABELS: Use ONLY exact real field values from the provided data. Never write "Tower A", "Region 1", "Category X", "Item 1" or any invented stand-ins.
-RULE 3 — NO AI DISCLOSURE BADGES: Do not add "Generated by AI Analytics", "Powered by AI" footer badges or banners.
-
-=== CHART TYPE RULES ===
-CASE 1 — BROAD / GENERAL QUERY (e.g. "show me tower distribution", "give me an overview", "analyse X", "dashboard"): Generate a MULTI-CHART DASHBOARD with a CSS Grid layout containing:
-  - 2–3 KPI stat cards at the top (total counts, averages, etc.)
-  - A vertical BAR CHART showing counts/distribution
-  - A PIE or DOUGHNUT chart showing proportions
-  - A LINE CHART if there is any time or sequential dimension in the data
-  This gives the richest possible view of the data.
-
-CASE 2 — SPECIFIC CHART REQUEST (e.g. "show me a bar chart of X", "pie chart of Y"): Generate exactly that chart type and nothing else.
-
-CASE 3 — AMBIGUOUS SINGLE-METRIC QUERY: Default to a BAR CHART as it is the most readable for counts and comparisons.
-
-=== OUTPUT FORMAT ===
-First write a DATA-DRIVEN ANALYTICAL SUMMARY (3-5 sentences). This will be displayed to the user and used as the email body.
-The summary MUST:
-  - Cite specific numbers and percentages from the actual data (e.g. "UMTS accounts for 42% of towers (1,204 sites)")
-  - Identify the top performer and bottom performer by name
-  - Call out any notable gap, anomaly, or concentration (e.g. "The top two categories together represent 67% of total volume")
-  - Include one business implication or recommendation based on the data
-  - NEVER just say "here is a visualization" or restate what the chart shows — that is not an analysis
-Then output the full HTML wrapped in: :::artifact ... :::
-
-=== HTML PAGE RULES ===
-- <body> first child must be: <h1 style="font-size:20px;font-weight:800;color:#1e293b;text-align:center;margin:0 0 24px 0">YOUR TITLE</h1>
-- Page layout: max-width:800px; margin:0 auto; background:#fff; padding:28px; font-family:Inter,system-ui,sans-serif.
-- Chart.js loaded from CDN. Each canvas wrapped in: <div style="position:relative;height:320px">
-- Set maintainAspectRatio:false on every chart instance.
-- Color palette: #3B143C, #E06A55, #1E6B65, #7C73C0, #64748b, #94a3b8.
-- All JS inside: window.addEventListener("DOMContentLoaded", () => { ... });
-- Aesthetic: clean, white, minimal — no heavy shadows, no colored borders.`;
-
-async function generateChart(
-  userQuery: string,
-  rows: any[],
-  sql: string,
-  image: string | null
-): Promise<{ htmlMarkup: string; summary: string } | null> {
-
-  if (rows.length === 0) {
-    throw new Error('No relevant data found in the database for this query. Please refine your request.');
-  }
-
-  const dataContext = `\n\nACTUAL QUERY RESULTS (${rows.length} rows — use ONLY these real values for the chart labels and data):\n${JSON.stringify(rows, null, 2)}\n\nSQL that produced this data:\n${sql}`;
-
-  const userMessage: any = image
-    ? [
-        { type: 'text',      text: `User Request: ${userQuery}${dataContext}` },
-        { type: 'image_url', image_url: { url: image } },
-      ]
-    : `User Request: ${userQuery}${dataContext}`;
-
-  const content = await callOpenAI([
-    { role: 'system', content: CHART_SYSTEM_PROMPT },
-    { role: 'user',   content: userMessage },
-  ]);
-
-  if (!content) return null;
-
-  // Extract HTML artifact
-  let htmlMarkup = '';
-  const artifactMatch = content.match(/:::artifact\s*([\s\S]*?):::/);
-  if (artifactMatch) {
-    htmlMarkup = artifactMatch[1].trim().replace(/^```html\s*/i, '').replace(/```\s*$/i, '');
-  } else {
-    const htmlMatch = content.match(/<!DOCTYPE html>[\s\S]*<\/html>/i);
-    if (htmlMatch) {
-      htmlMarkup = htmlMatch[0];
-    } else {
-      // Fallback: extract anything between ```html and ```
-      const fenceMatch = content.match(/```html\s*([\s\S]*?)```/i);
-      if (fenceMatch) {
-        htmlMarkup = fenceMatch[1].trim();
-      } else if (content.includes('<html') || content.includes('<div')) {
-        // Just take the whole content if it has HTML tags
-        htmlMarkup = content;
-      }
-    }
-  }
-
-  // Summary = text BEFORE the artifact block (the email body)
-  const summary = content
-    .split(/:::artifact/)[0]
-    .replace(/[#*`]/g, '')
-    .trim()
-    .slice(0, 800);
-
-  console.log(`[BFF Pipeline] Chart generated. Summary length: ${summary.length}`);
-  return htmlMarkup ? { htmlMarkup, summary } : null;
-}
-
-// ── Main POST handler ──────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
-    const { query, image } = await req.json();
-    if (!query?.trim()) {
-      return NextResponse.json({ error: 'Query is required' }, { status: 400 });
+    const session = getSession(req);
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await getSystemAuthToken(); // provision user if needed
+    const authHeader = req.headers.get('Authorization') || '';
+    const token = authHeader.replace('Bearer ', '') || req.headers.get('cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('access_token='))
+      ?.split('=')[1];
 
-    let sql     = '';
-    let dataset: any[] = [];
+    const { query, databaseId, brandColors } = await req.json();
 
-    // ── PIPELINE ──────────────────────────────────────────────────────────
-    console.log('[BFF Pipeline] Step 1: Fetching ClickHouse schema...');
-    const schema = await fetchSchema();
+    if (!databaseId) {
+      return NextResponse.json({ error: 'No database selected' }, { status: 400 });
+    }
 
-    if (schema.tables) {
-      console.log('[BFF Pipeline] Step 2: Generating SQL...');
-      const generatedSQL = await generateSQL(query, schema);
+    // Block any destructive SQL keywords before they reach the AI
+    const normalizedQuery = query.toUpperCase();
+    if (
+      normalizedQuery.includes('DROP') ||
+      normalizedQuery.includes('TRUNCATE') ||
+      normalizedQuery.includes('ALTER') ||
+      normalizedQuery.includes('DELETE')
+    ) {
+      return NextResponse.json({ error: 'Destructive commands are not allowed' }, { status: 403 });
+    }
 
-      if (generatedSQL) {
-        sql = generatedSQL;
-        console.log(`[BFF Pipeline] Step 3: Running SQL:\n${sql}`);
-        const { rows, error } = await runSQL(sql);
-        if (!error) dataset = rows;
-        else console.warn('[BFF Pipeline] SQL error, proceeding with empty dataset:', error);
-      } else {
-        console.log('[BFF Pipeline] No SQL generated — will use schema context only.');
+    // Load the target database connection for this user
+    const { db } = await connectToDatabase();
+    const connection = await db.collection('jacaranda_connections').findOne({
+      _id: new ObjectId(databaseId),
+      userId: session.userId,
+    });
+
+    if (!connection) {
+      return NextResponse.json({ error: 'Database connection not found or access denied' }, { status: 404 });
+    }
+
+    // Fetch and cache the target database schema
+    let rawSchema: any[] = [];
+    const cacheKey = connection._id.toString();
+    const cached = schemaCache.get(cacheKey);
+
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      rawSchema = cached.schema;
+    } else {
+      let decryptedPassword: string;
+      try {
+        decryptedPassword = decrypt(connection.password);
+      } catch (err: any) {
+        console.error('[Generate] Failed to decrypt stored connection password:', err);
+        return NextResponse.json({
+          error: 'Unable to decrypt the stored database password. Please re-save this connection with a valid encryption key.',
+        }, { status: 500 });
       }
+
+      const buildClickHouseUrl = (host: string, port?: string | number) => {
+        const normalizedHost = host.startsWith('http') ? host : `https://${host}`;
+        const url = new URL(normalizedHost);
+        if (port && !url.port) url.port = String(port);
+        return url.toString().replace(/\/+$/, '');
+      };
+
+      const targetClient = createClient({
+        url: buildClickHouseUrl(connection.host, connection.port),
+        username: connection.username,
+        password: decryptedPassword,
+        database: connection.databaseName,
+        request_timeout: 60000,
+      });
+
+      const colResult = await targetClient.query({
+        query: 'SELECT table, name, type FROM system.columns WHERE database = currentDatabase()',
+        format: 'JSONEachRow',
+      });
+      const cols = await colResult.json() as any[];
+
+      const tableMap: Record<string, string[]> = {};
+      for (const c of cols) {
+        if (!tableMap[c.table]) tableMap[c.table] = [];
+        tableMap[c.table].push(`${c.name} (${c.type})`);
+      }
+
+      rawSchema = Object.entries(tableMap).map(([table, columns]) => ({ table, columns }));
+      schemaCache.set(cacheKey, { timestamp: Date.now(), schema: rawSchema });
     }
 
-    if (dataset.length === 0) {
-      throw new Error('No relevant data found in the database. Please verify your schema or query parameters.');
-    }
+    const injectedSchema = filterSchema(rawSchema, query);
+    console.log(`[Generate] Schema tokens used: ~${Math.ceil(injectedSchema.length / 4)}`);
 
-    console.log('[BFF Pipeline] Step 4: Generating HTML chart...');
-    const aiResult = await generateChart(query, dataset, sql, image || null);
-
-    if (!aiResult?.htmlMarkup) {
-      return NextResponse.json(
-        { success: false, error: 'AI failed to generate a valid chart.' },
-        { status: 502 },
-      );
-    }
-
-    const { htmlMarkup, summary } = aiResult;
-
-    // ── Persist to MongoDB ──────────────────────────────────────────────
-    const reportId      = Date.now();
-    const reportPayload = {
-      id: reportId,
-      query,
-      timestamp: new Date().toISOString(),
-      status: 'Ready',
-      summary,   // ← this is the email body
-      sql:       sql || undefined,
-      details:   dataset.length ? JSON.stringify(dataset, null, 2) : undefined,
-      htmlMarkup,
-      rowCount:  dataset.length,
-      fallbackSimulated: dataset.length === 0,
+    // Send the query and schema to the AI agent with a 60 second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const agentUrl = `${LIBRECHAT_URL}/api/chat/completions`;
+    const aiRequestBody = {
+      model: 'clickhouse-analytics-agent',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert BI engine. Produce a comprehensive multi-chart HTML layout using Chart.js.
+Use these brand colors for datasets: ${JSON.stringify(brandColors || { primary: '#4A154B', secondary: '#E06A55', accent: '#1E6B65' })}.
+Do not output emojis or decorative icons.
+Only use tables and columns from this schema:
+${injectedSchema}`,
+        },
+        {
+          role: 'user',
+          content: query,
+        },
+      ],
+      stream: false,
     };
 
+    let librechatResponse;
     try {
-      const mongo = new MongoClient(MONGO_URI);
-      await mongo.connect();
-      await mongo.db('LibreChat').collection('jacaranda_reports').insertOne(reportPayload);
-      await mongo.close();
-    } catch (mongoErr) {
-      console.error('[BFF] MongoDB save failed:', mongoErr);
+      librechatResponse = await fetch(agentUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        signal: controller.signal,
+        body: JSON.stringify(aiRequestBody),
+      });
+      clearTimeout(timeoutId);
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      console.error('[Generate] AI agent request failed', {
+        url: agentUrl,
+        message: fetchError.message,
+        stack: fetchError.stack,
+      });
+      throw new Error(`AI agent request failed: ${fetchError.message}`);
+    }
+
+    if (!librechatResponse.ok) {
+      const responseText = await librechatResponse.text().catch(() => '<unreadable response>');
+      console.error('[Generate] AI agent returned non-ok response', {
+        url: agentUrl,
+        status: librechatResponse.status,
+        statusText: librechatResponse.statusText,
+        responseText,
+      });
+      throw new Error(`AI agent returned an error: ${librechatResponse.status} ${librechatResponse.statusText}`);
+    }
+
+    const aiPayload = await librechatResponse.json();
+    const html_markup = aiPayload.choices?.[0]?.message?.content || '';
+
+    if (!html_markup.includes('<html') && !html_markup.includes('<div') && !html_markup.includes('<canvas')) {
+      throw new Error('AI returned invalid HTML.');
+    }
+
+    // Save the report to MongoDB
+    const reportId = crypto.randomUUID();
+    try {
+      await internalClient.insert({
+        table: 'jacaranda_reports',
+        values: [
+          {
+            id: reportId,
+            user_id: session.userId,
+            db_conn_id: databaseId,
+            query_text: query,
+            report_html: html_markup,
+            created_at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          },
+        ],
+        format: 'JSONEachRow',
+      });
+    } catch (insertError: any) {
+      // Log but don't fail — the report was generated successfully even if persistence fails
+      console.error('[Generate] Failed to save report:', insertError);
     }
 
     return NextResponse.json({
       success: true,
-      fallback_simulated: dataset.length === 0,
-      report: {
-        ...reportPayload,
-        htmlUrl: `/api/analytics/html/${reportId}`,
-        hasHtml: true,
-      },
+      id: reportId,
+      htmlMarkup: html_markup,
+      fallback_simulated: false,
     });
 
   } catch (error: any) {
-    console.error('[BFF] Generate Route Error:', error);
+    console.error('[Generate] Error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

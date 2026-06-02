@@ -37,11 +37,12 @@ export async function GET(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const puppeteer = (await import('puppeteer-core' as any)).default;
 
+    const chromium = (await import('@sparticuz/chromium')).default;
     const browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-      defaultViewport: { width: 800, height: 600 },
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-      headless: true,
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();

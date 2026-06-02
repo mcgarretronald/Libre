@@ -143,9 +143,9 @@ export async function POST(req: Request) {
     // Send the query and schema to the AI agent with a 60 second timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000);
-    const agentUrl = `${LIBRECHAT_URL}/api/chat/completions`;
+    const agentPaths = ['/api/agents/v1/chat/completions'];
     const aiRequestBody = {
-      model: 'clickhouse-analytics-agent',
+      model: 'agent_RQFKRTcGXf3a35KStB_GK',
       messages: [
         {
           role: 'system',
@@ -164,42 +164,60 @@ ${injectedSchema}`,
     };
 
     let librechatResponse;
-    try {
-      librechatResponse = await fetch(agentUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        signal: controller.signal,
-        body: JSON.stringify(aiRequestBody),
-      });
-      clearTimeout(timeoutId);
-    } catch (fetchError: any) {
-      clearTimeout(timeoutId);
-      console.error('[Generate] AI agent request failed', {
-        url: agentUrl,
-        message: fetchError.message,
-        stack: fetchError.stack,
-      });
-      throw new Error(`AI agent request failed: ${fetchError.message}`);
-    }
+    let lastAgentUrl = '';
 
-    if (!librechatResponse.ok) {
+    for (const path of agentPaths) {
+      lastAgentUrl = `${LIBRECHAT_URL}${path}`;
+      try {
+        librechatResponse = await fetch(lastAgentUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.LIBRECHAT_API_KEY || process.env.OPENAI_API_KEY || token}`,
+          },
+          signal: controller.signal,
+          body: JSON.stringify(aiRequestBody),
+        });
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        console.error('[Generate] AI agent request failed', {
+          url: lastAgentUrl,
+          message: fetchError.message,
+          stack: fetchError.stack,
+        });
+        throw new Error(`AI agent request failed: ${fetchError.message}`);
+      }
+
+      if (librechatResponse.ok) {
+        break;
+      }
+
       const responseText = await librechatResponse.text().catch(() => '<unreadable response>');
-      console.error('[Generate] AI agent returned non-ok response', {
-        url: agentUrl,
+      console.warn('[Generate] AI agent returned non-ok response', {
+        url: lastAgentUrl,
         status: librechatResponse.status,
         statusText: librechatResponse.statusText,
         responseText,
       });
-      throw new Error(`AI agent returned an error: ${librechatResponse.status} ${librechatResponse.statusText}`);
+
+      if (librechatResponse.status !== 404) {
+        clearTimeout(timeoutId);
+        throw new Error(`AI agent returned an error: ${librechatResponse.status} ${librechatResponse.statusText}`);
+      }
+    }
+
+    clearTimeout(timeoutId);
+
+    if (!librechatResponse || !librechatResponse.ok) {
+      throw new Error(`AI agent returned an error: ${librechatResponse?.status || 'unknown'} ${librechatResponse?.statusText || 'No response'}`);
     }
 
     const aiPayload = await librechatResponse.json();
     const html_markup = aiPayload.choices?.[0]?.message?.content || '';
 
     if (!html_markup.includes('<html') && !html_markup.includes('<div') && !html_markup.includes('<canvas')) {
+      console.error('[Generate] AI returned invalid HTML. Payload:', JSON.stringify(aiPayload));
+      console.error('[Generate] Extracted markup:', html_markup);
       throw new Error('AI returned invalid HTML.');
     }
 

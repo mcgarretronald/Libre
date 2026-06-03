@@ -30,11 +30,19 @@ export async function GET(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const puppeteer = (await import('puppeteer-core' as any)).default;
 
-    const chromium = (await import('@sparticuz/chromium')).default;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const chromium = (await import('@sparticuz/chromium-min')).default as any;
+    const isLocal = process.env.NODE_ENV === 'development';
+    
+    // On Vercel, we must use chromium-min and fetch the binary remotely to avoid the 50MB limit
     const browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
-      executablePath: await chromium.executablePath(),
+      executablePath: await chromium.executablePath(
+        isLocal 
+          ? (process.env.CHROME_EXECUTABLE_PATH || '/usr/bin/google-chrome')
+          : 'https://github.com/Sparticuz/chromium/releases/download/v123.0.1/chromium-v123.0.1-pack.tar'
+      ),
       headless: chromium.headless,
     });
 

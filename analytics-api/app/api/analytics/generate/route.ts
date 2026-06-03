@@ -8,8 +8,6 @@ import { ObjectId } from 'mongodb';
 
 const LIBRECHAT_URL = (process.env.LIBRECHAT_URL || 'http://localhost:3080').replace(/\/$/, '');
 
-// Allow up to 2 minutes for schema reflection and AI generation
-export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
 // In-memory cache for database schemas to avoid repeatedly querying the target DB

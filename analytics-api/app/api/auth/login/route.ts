@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const LIBRECHAT_URL = process.env.LIBRECHAT_URL || 'http://localhost:3080';
+const LIBRECHAT_URL = (process.env.LIBRECHAT_URL || 'http://localhost:3080').replace(/\/$/, '');
 
 export async function POST(req: Request) {
   let body: any;
@@ -36,9 +36,9 @@ export async function POST(req: Request) {
         { status: 504 }
       );
     }
-    console.error('[Login] Could not reach LibreChat:', err.message);
+    console.error(`[Login] Could not reach LibreChat at ${LIBRECHAT_URL}/api/auth/login:`, err.message);
     return NextResponse.json(
-      { error: 'Could not reach the authentication service. Please try again shortly.' },
+      { error: `Could not reach the authentication service. Please try again shortly.` },
       { status: 503 }
     );
   }

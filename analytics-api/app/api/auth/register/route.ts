@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const LIBRECHAT_URL = process.env.LIBRECHAT_URL || 'http://localhost:3080';
+const LIBRECHAT_URL = (process.env.LIBRECHAT_URL || 'http://localhost:3080').replace(/\/$/, '');
 
 export async function POST(req: Request) {
   let body: any;

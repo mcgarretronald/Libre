@@ -56,12 +56,20 @@ async function dispatchCampaign(db, campaign, transporter) {
   console.log(`[Cron] Dispatching campaign ${campaign.campaignId}`);
   console.log(`[Cron] Recipients: ${campaign.recipients.length}, mode: ${campaign.scheduleType || 'immediate'}`);
 
-  const chResult = await clickhouse.query({
-    query: `SELECT id, query_text as query FROM jacaranda_reports WHERE id = '${campaign.reportId}'`,
-    format: 'JSONEachRow'
-  });
-  const chRows = await chResult.json();
-  const report = chRows.length > 0 ? chRows[0] : null;
+  let report = null;
+  try {
+    const chResult = await clickhouse.query({
+      query: `SELECT id, query_text as query FROM jacaranda_reports WHERE id = '${campaign.reportId}'`,
+      format: 'JSONEachRow'
+    });
+    const chRows = await chResult.json();
+    report = chRows.length > 0 ? chRows[0] : null;
+  } catch (err) {
+    console.warn(`[Cron] Warning: Failed to fetch report metadata from ClickHouse: ${err.message}`);
+    // Provide fallback report object so the email still sends
+    report = { id: campaign.reportId, query: 'Analytics Report' };
+  }
+
   const reportTitle = (report?.query?.length > 60 ? report.query.substring(0, 60) + '...' : report?.query) || 'Analytics Report';
   console.log(`[Cron] Report: "${reportTitle}"`);
 

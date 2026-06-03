@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Send, Terminal, Trash2, Eye, Download, ChevronDown, CheckCircle2, Database, X, BarChart2, FileText, Image, Maximize } from 'lucide-react';
+import { Tip } from './ui/Tip';
 
 interface Report {
   id: string | number;
@@ -91,27 +92,29 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
 
         {/* Quick actions */}
         <div className="shrink-0 flex items-center gap-1 pr-3 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-          <button
-            onClick={() => onDispatch(report)}
-            title="Send as Campaign"
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-[#E06A55] hover:bg-[#E06A55]/10 transition-colors"
-          >
-            <Send className="w-3.5 h-3.5" />
-          </button>
+          <Tip label="Send as Campaign">
+            <button
+              onClick={() => onDispatch(report)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-[#E06A55] hover:bg-[#E06A55]/10 transition-colors"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          </Tip>
 
           {/* Download with format picker */}
           <div className="relative">
-            <button
-              onClick={() => setShowDownload(p => !p)}
-              title="Download"
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-            >
-              {exporting ? (
-                <div className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-              ) : (
-                <Download className="w-3.5 h-3.5" />
-              )}
-            </button>
+            <Tip label="Download">
+              <button
+                onClick={() => setShowDownload(p => !p)}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+              >
+                {exporting ? (
+                  <div className="w-3 h-3 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </Tip>
             {showDownload && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setShowDownload(false)} />
@@ -135,13 +138,14 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
             )}
           </div>
 
-          <button
-            onClick={() => onDelete(report.id)}
-            title="Delete report"
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          <Tip label="Delete report" side="top">
+            <button
+              onClick={() => onDelete(report.id)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </Tip>
         </div>
       </div>
 
@@ -179,13 +183,14 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
                     style={{ height: '380px', border: 'none' }}
                     title={`Report ${shortId}`}
                   />
-                  <button
-                    onClick={() => setShowLightbox(true)}
-                    className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black text-white rounded-lg opacity-0 group-hover/iframe:opacity-100 transition-all shadow-md"
-                    title="Expand Preview"
-                  >
-                    <Maximize className="w-4 h-4" />
-                  </button>
+                  <Tip label="Expand preview" side="left">
+                    <button
+                      onClick={() => setShowLightbox(true)}
+                      className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black text-white rounded-lg opacity-0 group-hover/iframe:opacity-100 transition-all shadow-md"
+                    >
+                      <Maximize className="w-4 h-4" />
+                    </button>
+                  </Tip>
                 </>
               ) : (
                 <div className="h-40 flex flex-col items-center justify-center text-slate-300">

@@ -211,17 +211,19 @@ export default function CorporatePortal() {
     try { await fetch(`/api/analytics/campaigns/${id}`, { method: 'DELETE' }); } catch (_) {}
   };
 
-  const handleCampaignAction = async (id: string, action: 'pause' | 'redispatch') => {
+  const handleCampaignAction = async (id: string, action: 'pause' | 'redispatch'): Promise<boolean> => {
     try {
-      await fetch('/api/analytics/campaigns', {
+      const res = await fetch('/api/analytics/campaigns', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, action }),
       });
-      // Optionally refresh campaigns
+      if (!res.ok) return false;
       fetchCampaigns();
+      return true;
     } catch (e) {
       console.error('Action failed', e);
+      return false;
     }
   };
 

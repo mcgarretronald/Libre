@@ -112,9 +112,13 @@ export async function PATCH(req: Request) {
     } else if (action === 'redispatch') {
       await db.collection('jacaranda_campaigns').updateOne(
         { campaignId: id },
-        { $set: { status: 'redispatch_pending' } }
+        { $set: { status: 'redispatch_pending', redispatchRequestedAt: new Date().toISOString() } }
       );
       await client.close();
+      // Best-effort: nudge the cron worker to pick it up immediately
+      try {
+        await fetch(`${CRON_WORKER_URL}/dispatch/${id}`, { method: 'POST' });
+      } catch (_) {}
       return NextResponse.json({ success: true, message: 'Redispatched via worker polling' });
     } else {
       await client.close();

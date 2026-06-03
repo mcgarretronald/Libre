@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   MoreHorizontal, Plus, Calendar, Users,
-  Send, Trash2, Play, Pause, Clock, RefreshCw
+  Send, Trash2, Play, Pause, Clock, RefreshCw,
+  CheckCircle2, XCircle, Info
 } from 'lucide-react';
+import { Tip } from './ui/Tip';
 
 interface Campaign {
   campaignId: string;
@@ -21,7 +24,54 @@ interface CampaignListProps {
   campaigns: Campaign[];
   onDelete: (id: string) => void;
   onNewCampaign?: () => void;
-  onAction?: (id: string, action: 'pause' | 'redispatch') => Promise<void>;
+  /** Return true = success, false = failure */
+  onAction?: (id: string, action: 'pause' | 'redispatch') => Promise<boolean>;
+}
+
+/* ─── Portal Toast ─────────────────────────────────────────────── */
+type ToastState = { message: string; type: 'success' | 'error' | 'info' } | null;
+
+function Toast({ toast, onDone }: { toast: ToastState; onDone: () => void }) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    timerRef.current = setTimeout(onDone, 3500);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [toast, onDone]);
+
+  if (!toast) return null;
+
+  const styles = {
+    success: { bg: 'bg-emerald-600', Icon: CheckCircle2 },
+    error:   { bg: 'bg-red-600',     Icon: XCircle       },
+    info:    { bg: 'bg-indigo-600',  Icon: Info           },
+  }[toast.type];
+
+  return createPortal(
+    <div
+      role="status"
+      aria-live="polite"
+      className={`
+        fixed top-5 left-1/2 -translate-x-1/2 z-[999]
+        flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl
+        text-white text-[13px] font-bold
+        animate-in fade-in slide-in-from-top-4 duration-300
+        ${styles.bg}
+      `}
+    >
+      <styles.Icon className="w-4 h-4 shrink-0" />
+      {toast.message}
+      <button
+        onClick={onDone}
+        className="ml-2 opacity-70 hover:opacity-100 transition-opacity text-white"
+        aria-label="Dismiss"
+      >
+        ✕
+      </button>
+    </div>,
+    document.body
+  );
 }
 
 const SCHEDULE_TAG_COLORS = [
@@ -39,19 +89,18 @@ function hashColor(str: string) {
 }
 
 function StatusPill({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    scheduled:  { label: 'Running',   cls: 'text-emerald-700 bg-emerald-50 border border-emerald-200' },
-    dispatched: { label: 'Sent',      cls: 'text-violet-700  bg-violet-50  border border-violet-200'  },
-    immediate:  { label: 'Immediate', cls: 'text-sky-700     bg-sky-50     border border-sky-200'     },
-    failed:     { label: 'Failed',    cls: 'text-red-600     bg-red-50     border border-red-200'     },
+  const map: Record<string, { label: string; dot: string; cls: string }> = {
+    scheduled:          { label: 'Running',    dot: 'bg-emerald-500 animate-pulse', cls: 'text-emerald-700 bg-emerald-50 border border-emerald-200' },
+    dispatched:         { label: 'Sent',       dot: 'bg-violet-500',               cls: 'text-violet-700  bg-violet-50  border border-violet-200'  },
+    immediate:          { label: 'Sent',       dot: 'bg-violet-500',               cls: 'text-violet-700  bg-violet-50  border border-violet-200'  },
+    redispatch_pending: { label: 'Re-sending', dot: 'bg-amber-500 animate-pulse',  cls: 'text-amber-700  bg-amber-50   border border-amber-200'   },
+    paused:             { label: 'Paused',     dot: 'bg-slate-400',                cls: 'text-slate-600  bg-slate-100  border border-slate-200'    },
+    failed:             { label: 'Failed',     dot: 'bg-red-500',                  cls: 'text-red-600    bg-red-50     border border-red-200'      },
   };
-  const cfg = map[status] ?? map['scheduled'];
+  const cfg = map[status] ?? { label: status, dot: 'bg-slate-400', cls: 'text-slate-600 bg-slate-100 border border-slate-200' };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold ${cfg.cls}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${
-        status === 'scheduled' ? 'bg-emerald-500 animate-pulse' :
-        status === 'dispatched' ? 'bg-violet-500' : 'bg-sky-500'
-      }`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
       {cfg.label}
     </span>
   );
@@ -74,16 +123,31 @@ function BigStat({ value, label }: { value: number | string; label: string }) {
   );
 }
 
-function CampaignRow({ camp, onDelete, onAction }: { camp: Campaign; onDelete: (id: string) => void; onAction?: (id: string, action: 'pause' | 'redispatch') => Promise<void> }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+function CampaignRow({ camp, onDelete, onAction }: { camp: Campaign; onDelete: (id: string) => void; onAction?: (id: string, action: 'pause' | 'redispatch') => Promise<boolean> }) {
+  const [menuOpen, setMenuOpen]           = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [toast, setToast]                 = useState<ToastState>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info') =>
+    setToast({ message, type });
 
   const handleAction = async (action: 'pause' | 'redispatch') => {
     if (!onAction) return;
     setIsActionLoading(true);
     setMenuOpen(false);
     try {
-      await onAction(camp.campaignId, action);
+      const ok = await onAction(camp.campaignId, action);
+      if (action === 'redispatch') {
+        ok
+          ? showToast('Campaign queued for re-dispatch ✓', 'success')
+          : showToast('Re-dispatch failed — check the worker logs', 'error');
+      } else if (action === 'pause') {
+        ok
+          ? showToast('Campaign paused', 'info')
+          : showToast('Could not pause — please try again', 'error');
+      }
+    } catch {
+      showToast('Unexpected error — please try again', 'error');
     } finally {
       setIsActionLoading(false);
     }
@@ -105,6 +169,8 @@ function CampaignRow({ camp, onDelete, onAction }: { camp: Campaign; onDelete: (
   const tags = [scheduleLabel, `${camp.recipients?.length ?? 0} recipients`];
 
   return (
+    <>
+      <Toast toast={toast} onDone={() => setToast(null)} />
     <div className="group border-b border-border last:border-0 px-6 py-5 hover:bg-accent/40 transition-colors">
       <div className="flex items-start gap-4">
 
@@ -141,32 +207,37 @@ function CampaignRow({ camp, onDelete, onAction }: { camp: Campaign; onDelete: (
               </div>
               <StatusPill status={camp.status} />
               <div className="relative">
-                <button
-                  onClick={() => setMenuOpen(p => !p)}
-                  disabled={isActionLoading}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
-                >
-                  {isActionLoading ? <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" /> : <MoreHorizontal className="w-4 h-4" />}
-                </button>
+                <Tip label="More actions" side="bottom">
+                  <button
+                    onClick={() => setMenuOpen(p => !p)}
+                    disabled={isActionLoading}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
+                  >
+                    {isActionLoading ? <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" /> : <MoreHorizontal className="w-4 h-4" />}
+                  </button>
+                </Tip>
                 {menuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
-                    <div className="absolute right-0 top-8 z-50 bg-white border border-slate-200 rounded-xl shadow-xl w-40 overflow-hidden">
-                      <button onClick={() => handleAction('redispatch')}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50 text-left border-b border-slate-100">
-                        <Play className="w-3.5 h-3.5 text-emerald-500" />Re-dispatch
-                      </button>
-                      {camp.status === 'scheduled' && (
-                        <button onClick={() => handleAction('pause')}
+                    <div className="absolute right-0 top-8 z-50 bg-white border border-slate-200 rounded-xl shadow-xl w-44 overflow-hidden">
+                        <button onClick={() => handleAction('redispatch')}
                           className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50 text-left border-b border-slate-100">
-                          <Pause className="w-3.5 h-3.5 text-amber-500" />Pause
+                          <Play className="w-3.5 h-3.5 text-emerald-500" />
+                          Re-dispatch
                         </button>
-                      )}
-                      <button onClick={() => { setMenuOpen(false); if (confirm('Delete this campaign?')) onDelete(camp.campaignId); }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-red-500 hover:bg-red-50 text-left">
-                        <Trash2 className="w-3.5 h-3.5" />Delete
-                      </button>
-                    </div>
+                        {(camp.status === 'scheduled') && (
+                          <button onClick={() => handleAction('pause')}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50 text-left border-b border-slate-100">
+                            <Pause className="w-3.5 h-3.5 text-amber-500" />
+                            Pause
+                          </button>
+                        )}
+                        <button onClick={() => { setMenuOpen(false); if (confirm('Delete this campaign?')) onDelete(camp.campaignId); }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-red-500 hover:bg-red-50 text-left">
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Delete
+                        </button>
+                      </div>
                   </>
                 )}
               </div>
@@ -188,14 +259,16 @@ function CampaignRow({ camp, onDelete, onAction }: { camp: Campaign; onDelete: (
         </div>
       </div>
     </div>
+    </>
   );
 }
 
-export function CampaignList({ campaigns, onDelete, onNewCampaign }: CampaignListProps) {
+export function CampaignList({ campaigns, onDelete, onNewCampaign, onAction }: CampaignListProps) {
   const [tab, setTab] = useState<'active' | 'sent'>('active');
 
-  const active = campaigns.filter(c => c.status === 'scheduled');
-  const sent   = campaigns.filter(c => c.status !== 'scheduled');
+  const ACTIVE_STATUSES = new Set(['scheduled', 'redispatch_pending']);
+  const active = campaigns.filter(c => ACTIVE_STATUSES.has(c.status));
+  const sent   = campaigns.filter(c => !ACTIVE_STATUSES.has(c.status));
   const shown  = tab === 'active' ? active : sent;
 
   return (
@@ -224,8 +297,8 @@ export function CampaignList({ campaigns, onDelete, onNewCampaign }: CampaignLis
       {/* Tabs + filter row */}
       <div className="flex items-center gap-6 border-b border-slate-200 pb-0">
         {[
-          { key: 'active', label: 'Active',   count: active.length },
-          { key: 'sent',   label: 'Archived', count: sent.length   },
+          { key: 'active', label: 'Active', count: active.length },
+          { key: 'sent',   label: 'Sent',   count: sent.length   },
         ].map(t => (
           <button
             key={t.key}
@@ -261,7 +334,7 @@ export function CampaignList({ campaigns, onDelete, onNewCampaign }: CampaignLis
             </p>
           </div>
         ) : (
-          shown.map(c => <CampaignRow key={c.campaignId} camp={c} onDelete={onDelete} />)
+          shown.map(c => <CampaignRow key={c.campaignId} camp={c} onDelete={onDelete} onAction={onAction} />)
         )}
       </div>
     </div>

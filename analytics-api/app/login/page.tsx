@@ -138,7 +138,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(v => !v)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition z-10"
                   tabIndex={-1}
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -151,7 +151,7 @@ export default function LoginPage() {
               type="submit"
               disabled={isLoading || !email || !password}
               className="w-full flex items-center justify-center gap-2 font-bold text-sm px-4 py-3.5 rounded-xl text-white transition-all duration-200 hover:opacity-90 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed mt-2"
-              style={{ background: 'linear-gradient(135deg, #3B143C, #5a2060)' }}
+              style={{ background: 'linear-gradient(135deg, #7c3aed, #d94fdc)' }}
             >
               {isLoading
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> Signing in...</>

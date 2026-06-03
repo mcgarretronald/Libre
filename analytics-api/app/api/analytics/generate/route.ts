@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
 import { connectToDatabase } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
-import { internalClient } from '@/lib/clickhouse';
+import { internalClient, initializeReportsTable } from '@/lib/clickhouse';
 import { createClient } from '@clickhouse/client';
 import { ObjectId } from 'mongodb';
 
@@ -135,25 +135,38 @@ export async function POST(req: Request) {
 
       rawSchema = Object.entries(tableMap).map(([table, columns]) => ({ table, columns }));
       schemaCache.set(cacheKey, { timestamp: Date.now(), schema: rawSchema });
+
+      await targetClient.close();
     }
 
     const injectedSchema = filterSchema(rawSchema, query);
     console.log(`[Generate] Schema tokens used: ~${Math.ceil(injectedSchema.length / 4)}`);
+    console.log('[Generate] Injected Schema:\n', injectedSchema);
 
-    // Send the query and schema to the AI agent with a 60 second timeout
+    // Send the query and schema to the AI agent with a 5 minute timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const timeoutId = setTimeout(() => controller.abort(), 300000);
     const agentPaths = ['/api/agents/v1/chat/completions'];
     const aiRequestBody = {
       model: 'agent_RQFKRTcGXf3a35KStB_GK',
       messages: [
         {
           role: 'system',
-          content: `You are an expert BI engine. Produce a comprehensive multi-chart HTML layout using Chart.js.
+          content: `You are an expert BI engine. Produce a comprehensive, beautiful multi-chart HTML layout using Chart.js.
 Use these brand colors for datasets: ${JSON.stringify(brandColors || { primary: '#4A154B', secondary: '#E06A55', accent: '#1E6B65' })}.
 Do not output emojis or decorative icons.
+
+CRITICAL HTML RULES:
+1. You must output RAW, valid HTML only. 
+2. Do NOT use markdown code blocks (like \`\`\`html). 
+3. Do NOT use artifact syntax (like :::artifact). 
+4. Do NOT use markdown for bolding or formatting (like **text**).
+5. If you include textual analysis, you MUST wrap it in beautiful, modern HTML tags (e.g., <div style="font-family: sans-serif; padding: 1.5rem; background: #fafafa; border-radius: 8px; margin-top: 1rem;"><h2 style="color: #4A154B; margin-bottom: 0.5rem;">Your Title</h2><p style="color: #444; line-height: 1.6;">Your analysis...</p></div>). Ensure the text has a clear title and body.
+
 Only use tables and columns from this schema:
-${injectedSchema}`,
+${injectedSchema}
+
+When using the query_database_action or get_database_schema_action tools, YOU MUST pass the following connection ID as the "db_conn_id" parameter: ${databaseId}`,
         },
         {
           role: 'user',
@@ -213,17 +226,35 @@ ${injectedSchema}`,
     }
 
     const aiPayload = await librechatResponse.json();
-    const html_markup = aiPayload.choices?.[0]?.message?.content || '';
+    let html_markup = aiPayload.choices?.[0]?.message?.content || '';
 
-    if (!html_markup.includes('<html') && !html_markup.includes('<div') && !html_markup.includes('<canvas')) {
-      console.error('[Generate] AI returned invalid HTML. Payload:', JSON.stringify(aiPayload));
-      console.error('[Generate] Extracted markup:', html_markup);
-      throw new Error('AI returned invalid HTML.');
+    // Strip out LibreChat artifact syntax and markdown code blocks just in case the AI ignores the prompt
+    html_markup = html_markup.replace(/:::artifact\{[\s\S]*?\}/g, '');
+    html_markup = html_markup.replace(/:::/g, '');
+    const htmlMatch = html_markup.match(/```html\n([\s\S]*?)```/);
+    if (htmlMatch) {
+      html_markup = htmlMatch[1];
+    } else {
+      html_markup = html_markup.replace(/```\w*\n/g, '').replace(/```/g, '');
+    }
+    
+    html_markup = html_markup.trim();
+
+    let finalMarkup = html_markup;
+    if (!finalMarkup.includes('<html') && !finalMarkup.includes('<div') && !finalMarkup.includes('<canvas')) {
+      console.warn('[Generate] AI returned plain text instead of HTML. Wrapping in a display container.');
+      finalMarkup = `
+        <div style="padding: 2rem; font-family: sans-serif; color: #4A154B; text-align: center; background-color: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; margin: 2rem;">
+          <h3 style="margin-bottom: 1rem;">Message from AI Assistant</h3>
+          <p style="font-size: 1.1rem; line-height: 1.5;">${html_markup.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+        </div>
+      `;
     }
 
-    // Save the report to MongoDB
+    // Save the report to ClickHouse
     const reportId = crypto.randomUUID();
     try {
+      await initializeReportsTable();
       await internalClient.insert({
         table: 'jacaranda_reports',
         values: [
@@ -232,7 +263,9 @@ ${injectedSchema}`,
             user_id: session.userId,
             db_conn_id: databaseId,
             query_text: query,
-            report_html: html_markup,
+            report_html: finalMarkup,
+            brand_colors: JSON.stringify(brandColors || {}),
+            fallback_simulated: 0,
             created_at: new Date().toISOString().replace('T', ' ').substring(0, 19),
           },
         ],
@@ -243,10 +276,19 @@ ${injectedSchema}`,
       console.error('[Generate] Failed to save report:', insertError);
     }
 
+    // Extract a plain text summary from the HTML markup
+    let plainTextSummary = finalMarkup
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
+      .replace(/<[^>]+>/g, ' ') // Remove all HTML tags
+      .replace(/\s+/g, ' ') // Collapse whitespace
+      .trim();
+
     return NextResponse.json({
       success: true,
       id: reportId,
-      htmlMarkup: html_markup,
+      htmlMarkup: finalMarkup,
+      summary: plainTextSummary,
       fallback_simulated: false,
     });
 

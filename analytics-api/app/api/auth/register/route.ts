@@ -20,13 +20,25 @@ export async function POST(req: Request) {
 
   // Forward registration to LibreChat
   let librechatRes: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+
   try {
     librechatRes = await fetch(`${LIBRECHAT_URL}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password, confirm_password }),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
   } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      return NextResponse.json(
+        { error: 'The backend service took too long to respond. It may be waking up from sleep. Please try registering again.' },
+        { status: 504 }
+      );
+    }
     console.error('[Register] Could not reach LibreChat:', err.message);
     return NextResponse.json(
       { error: 'Could not reach the authentication service. Please try again shortly.' },

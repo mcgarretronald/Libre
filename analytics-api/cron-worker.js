@@ -3,6 +3,14 @@ const cron = require('node-cron');
 const nodemailer = require('nodemailer');
 const http = require('http');
 const https = require('https');
+const { createClient } = require('@clickhouse/client');
+
+const clickhouse = createClient({
+  url: process.env.CLICKHOUSE_HOST || 'http://localhost:8123',
+  username: process.env.CLICKHOUSE_USER || 'default',
+  password: process.env.CLICKHOUSE_PASSWORD || '',
+  database: process.env.CLICKHOUSE_DATABASE || 'default',
+});
 
 // Public URL of the deployed portal. Set APP_URL in your environment.
 const APP_URL = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -46,7 +54,12 @@ async function dispatchCampaign(db, campaign, transporter) {
   console.log(`[Cron] Dispatching campaign ${campaign.campaignId}`);
   console.log(`[Cron] Recipients: ${campaign.recipients.length}, mode: ${campaign.scheduleType || 'immediate'}`);
 
-  const report = await db.collection('jacaranda_reports').findOne({ id: campaign.reportId });
+  const chResult = await clickhouse.query({
+    query: `SELECT id, query_text as query, report_html FROM jacaranda_reports WHERE id = '${campaign.reportId}'`,
+    format: 'JSONEachRow'
+  });
+  const chRows = await chResult.json();
+  const report = chRows.length > 0 ? chRows[0] : null;
   const reportTitle = (report?.query?.length > 60 ? report.query.substring(0, 60) + '...' : report?.query) || 'Analytics Report';
   console.log(`[Cron] Report: "${reportTitle}"`);
 

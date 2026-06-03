@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Send, Terminal, Trash2, Eye, Download, ChevronDown, CheckCircle2, Database, X, BarChart2, FileText, Image } from 'lucide-react';
+import { Send, Terminal, Trash2, Eye, Download, ChevronDown, CheckCircle2, Database, X, BarChart2, FileText, Image, Maximize } from 'lucide-react';
 
 interface Report {
   id: string | number;
@@ -24,9 +24,9 @@ interface ReportCardProps {
 
 export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
   const [expanded,     setExpanded]     = useState(false);
-  const [showTrace,    setShowTrace]    = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [exporting,    setExporting]    = useState<'pdf' | 'png' | null>(null);
+  const [showLightbox, setShowLightbox] = useState(false);
 
   const shortId = String(report.id).slice(-4).toUpperCase();
   const date    = new Date(report.timestamp);
@@ -54,6 +54,7 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
   };
 
   return (
+    <>
     <div className={`bg-card rounded-xl border transition-all duration-200 group relative
       ${showDownload ? 'overflow-visible z-20' : 'overflow-hidden z-10'}
       ${expanded ? 'border-[#3B143C]/30 shadow-md dark:border-[#E06A55]/20' : 'border-border shadow-sm hover:shadow-md hover:border-border/80'}`}>
@@ -169,14 +170,23 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
 
           {/* Chart preview */}
           <div className="bg-muted/40 p-4">
-            <div className="rounded-xl overflow-hidden border border-border bg-card shadow-sm">
+            <div className="rounded-xl overflow-hidden border border-border bg-card shadow-sm relative group/iframe">
               {report.htmlUrl ? (
-                <iframe
-                  src={report.htmlUrl}
-                  className="w-full bg-white"
-                  style={{ height: '380px', border: 'none' }}
-                  title={`Report ${shortId}`}
-                />
+                <>
+                  <iframe
+                    src={report.htmlUrl}
+                    className="w-full bg-white"
+                    style={{ height: '380px', border: 'none' }}
+                    title={`Report ${shortId}`}
+                  />
+                  <button
+                    onClick={() => setShowLightbox(true)}
+                    className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black text-white rounded-lg opacity-0 group-hover/iframe:opacity-100 transition-all shadow-md"
+                    title="Expand Preview"
+                  >
+                    <Maximize className="w-4 h-4" />
+                  </button>
+                </>
               ) : (
                 <div className="h-40 flex flex-col items-center justify-center text-slate-300">
                   <Eye className="w-7 h-7 mb-2" />
@@ -233,16 +243,6 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
                   </>
                 )}
               </div>
-
-              <button
-                onClick={() => setShowTrace(p => !p)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-colors ${
-                  showTrace ? 'bg-[#3B143C] text-white' : 'text-muted-foreground hover:bg-accent'
-                }`}
-              >
-                <Terminal className="w-3.5 h-3.5" />
-                {showTrace ? 'Hide Trace' : 'Trace'}
-              </button>
             </div>
 
             <button
@@ -254,50 +254,37 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
             </button>
           </div>
 
-          {/* SQL Trace */}
-          {showTrace && (
-            <div className="mx-5 mb-5 rounded-xl overflow-hidden" style={{ background: '#1a0a1c' }}>
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5">
-                <span className="text-[9px] font-black text-white/30 uppercase tracking-[0.15em]">Execution Trace</span>
-                <div className="flex items-center gap-2">
-                  {report.sql && (
-                    <span className="text-[9px] font-bold text-[#1E6B65] flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" /> SQL ran on ClickHouse
-                    </span>
-                  )}
-                  <button onClick={() => setShowTrace(false)} className="text-white/30 hover:text-white/60">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-              <div className="p-4 space-y-3">
-                {report.sql ? (
-                  <>
-                    <div>
-                      <p className="text-[9px] font-black text-white/25 uppercase tracking-widest mb-1.5">Generated SQL</p>
-                      <div className="text-xs font-mono text-[#E06A55] bg-black/40 px-3 py-2.5 rounded-lg break-all leading-relaxed">
-                        {report.sql}
-                      </div>
-                    </div>
-                    {report.details && (
-                      <div>
-                        <p className="text-[9px] font-black text-white/25 uppercase tracking-widest mb-1.5">Raw Results ({report.rowCount ?? '?'} rows)</p>
-                        <pre className="text-[10px] font-mono text-slate-400 bg-black/30 p-3 rounded-lg overflow-x-auto max-h-36">
-                          {report.details}
-                        </pre>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-white/40 font-medium">
-                    No SQL generated — ClickHouse was unreachable or returned no matching schema.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       )}
     </div>
+
+      {/* ── Lightbox Modal ── */}
+      {showLightbox && report.htmlUrl && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 sm:p-8 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full h-full max-w-7xl max-h-full rounded-2xl overflow-hidden relative flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between px-6 py-4 bg-slate-100 border-b border-slate-200 shrink-0">
+              <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-[#E06A55]" />
+                Interactive Report Preview
+              </h3>
+              <button
+                onClick={() => setShowLightbox(false)}
+                className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded-lg transition-colors"
+                title="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden bg-white w-full h-full relative">
+              <iframe
+                src={report.htmlUrl}
+                className="absolute inset-0 w-full h-full border-none"
+                title={`Report ${shortId} Fullscreen`}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

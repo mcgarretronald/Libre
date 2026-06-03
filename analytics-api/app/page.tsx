@@ -148,13 +148,14 @@ export default function CorporatePortal() {
   };
 
   const handleDispatch = async () => {
-    if (!drawerReport || csvRecipients.length === 0) return;
+    const activeRecipients = csvRecipients.filter(r => r.isActive !== false);
+    if (!drawerReport || activeRecipients.length === 0) return;
     setIsSending(true);
     try {
       await fetch('/api/analytics/campaigns', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reportId: drawerReport.id, recipients: csvRecipients, schedule, customCron }),
+        body: JSON.stringify({ reportId: drawerReport.id, recipients: activeRecipients, schedule, customCron }),
       });
       setDrawerReport(null); setCsvRecipients([]);
     } catch (e) { console.error(e); }
@@ -165,12 +166,16 @@ export default function CorporatePortal() {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      const lines = (ev.target?.result as string).split('\n').filter(Boolean);
-      const parsed: Recipient[] = lines.slice(1).map(l => {
-        const [email, name] = l.split(',').map(s => s.trim());
-        return { email, name };
-      }).filter(r => r.email?.includes('@'));
-      setCsvRecipients(prev => [...prev, ...parsed]);
+      const text = (ev.target?.result as string) || '';
+      const emails = text.match(/[\w.-]+@[\w.-]+\.\w+/g) || [];
+      const newRecipients = emails.map(email => ({ email: email.toLowerCase() }));
+      
+      setCsvRecipients(prev => {
+        const map = new Map(prev.map(p => [p.email, p]));
+        newRecipients.forEach(r => { if (!map.has(r.email)) map.set(r.email, r); });
+        return Array.from(map.values());
+      });
+      e.target.value = ''; // Allow re-uploading the same file
     };
     reader.readAsText(file);
   };
@@ -229,18 +234,51 @@ export default function CorporatePortal() {
                   <p className="text-[12px] mt-1 text-muted-foreground/60">Type a question below to generate your first report</p>
                 </div>
               ) : (
-                <div ref={reportListRef} className="max-w-3xl mx-auto space-y-3">
-                  {generationStage !== 'idle' && generationStage !== 'complete' && (
-                    <ProgressCard generationStage={generationStage} />
-                  )}
-                  {reports.map(report => (
-                    <ReportCard
-                      key={report.id}
-                      report={report}
-                      onDelete={handleDelete}
-                      onDispatch={r => { setDrawerReport(r); setCsvRecipients([]); setSchedule('immediate'); }}
-                    />
-                  ))}
+                <div ref={reportListRef} className="max-w-3xl mx-auto">
+                  {(() => {
+                    const groups: Record<string, typeof reports> = {};
+                    reports.forEach(report => {
+                      const date = new Date(report.timestamp);
+                      const today = new Date();
+                      const yesterday = new Date(today);
+                      yesterday.setDate(yesterday.getDate() - 1);
+
+                      const isSameDay = (d1: Date, d2: Date) => 
+                        d1.getDate() === d2.getDate() &&
+                        d1.getMonth() === d2.getMonth() &&
+                        d1.getFullYear() === d2.getFullYear();
+
+                      let groupName = '';
+                      if (isSameDay(date, today)) groupName = 'Today';
+                      else if (isSameDay(date, yesterday)) groupName = 'Yesterday';
+                      else {
+                        groupName = date.toLocaleDateString('en-GB', { 
+                          weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' 
+                        }).replace(',', '');
+                      }
+                      
+                      if (!groups[groupName]) groups[groupName] = [];
+                      groups[groupName].push(report);
+                    });
+
+                    return Object.entries(groups).map(([group, groupReports]) => (
+                      <div key={group} className="mb-6 last:mb-0">
+                        <h3 className="text-[11px] font-black uppercase tracking-[0.15em] text-muted-foreground mb-3 ml-2">
+                          {group}
+                        </h3>
+                        <div className="space-y-3">
+                          {groupReports.map(report => (
+                            <ReportCard
+                              key={report.id}
+                              report={report}
+                              onDelete={handleDelete}
+                              onDispatch={r => { setDrawerReport(r); setCsvRecipients([]); setSchedule('immediate'); }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ));
+                  })()}
                 </div>
               )}
             </div>
@@ -341,6 +379,10 @@ export default function CorporatePortal() {
                     </span>
                   )}
                 </div>
+
+                {generationStage !== 'idle' && generationStage !== 'complete' && (
+                  <ProgressCard generationStage={generationStage} />
+                )}
 
                 <PromptCard
                   chatInput={chatInput}

@@ -1,29 +1,59 @@
 import { createClient } from '@clickhouse/client'
 import { NextResponse } from 'next/server'
+import { connectToDatabase } from '@/lib/db'
+import { decrypt } from '@/lib/encryption'
+import { ObjectId } from 'mongodb'
 import fs from 'fs'
 
-// ClickHouse Client Setup
+// Default ClickHouse Client Setup (Fallback)
 const getClickhouseHost = (): string => {
     const rawHost = process.env.CLICKHOUSE_HOST || 'http://localhost:8123'
-
     let isDocker = false
     try {
         isDocker = fs.existsSync('/.dockerenv')
     } catch { }
 
-    // Auto-resolve Docker host for local dev
     if (!isDocker && rawHost.includes('://clickhouse')) {
         return rawHost.replace('://clickhouse', '://127.0.0.1')
     }
     return rawHost
 }
 
-const clickhouse = createClient({
-    url: getClickhouseHost(),
-    username: process.env.CLICKHOUSE_USER,
-    password: process.env.CLICKHOUSE_PASSWORD,
-    database: process.env.CLICKHOUSE_DATABASE || 'default',
-})
+const buildClickHouseUrl = (host: string, port?: string | number) => {
+    const normalizedHost = host.startsWith('http') ? host : `https://${host}`;
+    const url = new URL(normalizedHost);
+    if (port && !url.port) url.port = String(port);
+    return url.toString().replace(/\/+$/, '');
+};
+
+async function getClientForRequest(dbConnId: string | undefined | null) {
+    if (dbConnId) {
+        const { db } = await connectToDatabase();
+        let connection = null;
+        try {
+            connection = await db.collection('jacaranda_connections').findOne({ _id: new ObjectId(dbConnId) });
+        } catch (e) {
+            console.error('Invalid dbConnId ObjectId:', dbConnId);
+        }
+        if (connection) {
+            return createClient({
+                url: buildClickHouseUrl(connection.host, connection.port),
+                username: connection.username,
+                password: decrypt(connection.password),
+                database: connection.databaseName,
+                request_timeout: 60000,
+            });
+        }
+    }
+
+    // Fallback to default
+    return createClient({
+        url: getClickhouseHost(),
+        username: process.env.CLICKHOUSE_USER,
+        password: process.env.CLICKHOUSE_PASSWORD,
+        database: process.env.CLICKHOUSE_DATABASE || 'default',
+    });
+}
 
 // Security & Validation Rules
 const FORBIDDEN_KEYWORDS = [
@@ -94,6 +124,7 @@ export async function POST(req: Request) {
     try {
         const body = await req.json()
         const sql = body.sql || body.query
+        const dbConnId = body.db_conn_id || body.connection_id || body.databaseId;
 
         if (!sql || typeof sql !== 'string') {
             return NextResponse.json({ error: 'No SQL provided. Please provide a "sql" or "query" parameter.' }, { status: 400 })
@@ -117,12 +148,16 @@ export async function POST(req: Request) {
             safeSql = `${safeSql} LIMIT 100`
         }
 
+        const clickhouse = await getClientForRequest(dbConnId);
+        
         const result = await clickhouse.query({
             query: safeSql,
             format: 'JSONEachRow',
         })
 
         const dataset = await result.json() as any[]
+        
+        await clickhouse.close();
 
         return NextResponse.json({
             meta: [],

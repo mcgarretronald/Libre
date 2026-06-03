@@ -20,10 +20,17 @@ export async function GET() {
       .toArray();
 
     const reportIds = campaigns.map((c) => c.reportId).filter(Boolean);
-    const reports = await db.collection('jacaranda_reports')
-      .find({ id: { $in: reportIds } })
-      .project({ id: 1, query: 1, summary: 1 })
-      .toArray();
+    
+    let reports: any[] = [];
+    if (reportIds.length > 0) {
+      // Import the clickhouse client here to avoid top-level issues if any
+      const { internalClient } = require('@/lib/clickhouse');
+      const result = await internalClient.query({
+        query: `SELECT id, query_text as query FROM jacaranda_reports WHERE id IN ('${reportIds.join("','")}')`,
+        format: 'JSONEachRow'
+      });
+      reports = await result.json();
+    }
 
     await client.close();
 

@@ -1,21 +1,4 @@
-import { MongoClient } from 'mongodb';
-
-// MONGO_URI must be set in your environment. Never hardcode credentials here.
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
-
-declare global {
-  // eslint-disable-next-line no-var
-  var _htmlRouteMongoPromise: Promise<MongoClient> | undefined;
-}
-
-// Reuse the MongoDB connection across hot reloads in development
-let clientPromise: Promise<MongoClient>;
-if (!global._htmlRouteMongoPromise) {
-  const client = new MongoClient(MONGO_URI);
-  global._htmlRouteMongoPromise = client.connect();
-}
-clientPromise = global._htmlRouteMongoPromise!;
+import { internalClient } from '@/lib/clickhouse';
 
 const SECURITY_HEADERS = {
   'Content-Type': 'text/html; charset=utf-8',
@@ -33,20 +16,28 @@ export async function GET(
   const { id } = await params;
 
   try {
-    const client = await clientPromise;
-    const db = client.db('LibreChat');
-
-    const numericId = parseInt(id, 10);
-    const report = await db.collection('jacaranda_reports').findOne(
-      !isNaN(numericId) ? { id: numericId } : { id }
-    );
-
-    if (!report) {
+    const result = await internalClient.query({
+      query: `SELECT * FROM jacaranda_reports WHERE id = '${id}'`,
+      format: 'JSONEachRow'
+    });
+    
+    const rows = await result.json() as any[];
+    if (rows.length === 0) {
       return new Response(errorHtml('Report not found', id), {
         status: 404,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
     }
+
+    const row = rows[0];
+    const report = {
+      ...row,
+      htmlMarkup: row.report_html,
+      query: row.query_text,
+      timestamp: row.created_at,
+      brandColors: row.brand_colors ? JSON.parse(row.brand_colors) : null,
+      fallbackSimulated: !!row.fallback_simulated,
+    };
 
     if (report.htmlMarkup) {
       const wrapped = injectBrandFrame(report.htmlMarkup, {

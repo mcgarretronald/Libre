@@ -1,9 +1,5 @@
 import { NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
-
-// MONGO_URI must be set in your environment. Never hardcode credentials here.
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
+import { internalClient } from '@/lib/clickhouse';
 
 export async function GET(
   req: Request,
@@ -12,22 +8,19 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const format = searchParams.get('format') || 'pdf';
   const { id } = await params;
-  const reportId = parseInt(id, 10);
 
-  // Fetch the stored HTML markup from MongoDB
+  // Fetch the stored HTML markup from ClickHouse
   let htmlMarkup = '';
   try {
-    const mongo = new MongoClient(MONGO_URI!);
-    await mongo.connect();
-    const doc = await mongo
-      .db('LibreChat')
-      .collection('jacaranda_reports')
-      .findOne({ id: reportId });
-    await mongo.close();
-    if (!doc?.htmlMarkup) {
+    const result = await internalClient.query({
+      query: `SELECT report_html FROM jacaranda_reports WHERE id = '${id}'`,
+      format: 'JSONEachRow'
+    });
+    const rows = await result.json() as any[];
+    if (rows.length === 0 || !rows[0].report_html) {
       return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
-    htmlMarkup = doc.htmlMarkup;
+    htmlMarkup = rows[0].report_html;
   } catch (err: any) {
     return NextResponse.json({ error: 'Database error: ' + err.message }, { status: 500 });
   }

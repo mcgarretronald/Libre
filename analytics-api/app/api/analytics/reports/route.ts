@@ -1,42 +1,28 @@
 import { NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
+import { internalClient, initializeReportsTable } from '@/lib/clickhouse';
 
-// MONGO_URI must be set in your environment. Never hardcode credentials here.
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
-
-declare global {
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
-}
-
-// Reuse the MongoDB connection across hot reloads in development
-let clientPromise: Promise<MongoClient>;
-if (!global._mongoClientPromise) {
-  const client = new MongoClient(MONGO_URI);
-  global._mongoClientPromise = client.connect();
-}
-clientPromise = global._mongoClientPromise;
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const client = await clientPromise;
-    const db = client.db('LibreChat');
+    await initializeReportsTable();
 
-    const reports = await db
-      .collection('jacaranda_reports')
-      .find({})
-      .sort({ timestamp: -1 })
-      .limit(20)
-      .project({ _id: 0 })
-      .toArray();
+    const result = await internalClient.query({
+      query: `SELECT id, query_text as query, report_html, created_at as timestamp FROM jacaranda_reports ORDER BY created_at DESC LIMIT 20`,
+      format: 'JSONEachRow'
+    });
+    
+    const reports = await result.json() as any[];
 
-    // Strip large HTML/PDF blobs and replace with URL references for the UI
-    const clientReports = reports.map(({ pdfBase64, htmlMarkup, ...r }: any) => ({
-      ...r,
-      pdfUrl: `/api/analytics/pdf/${r.id}`,
+    // Strip large HTML blobs and replace with URL references for the UI
+    const clientReports = reports.map((r: any) => ({
+      id: r.id,
+      query: r.query,
+      timestamp: r.timestamp,
+      pdfUrl: `/api/analytics/export/${r.id}?format=pdf`,
       htmlUrl: `/api/analytics/html/${r.id}`,
-      hasPdf: !!pdfBase64,
-      hasHtml: !!htmlMarkup,
+      hasPdf: true,
+      hasHtml: !!r.report_html,
     }));
 
     return NextResponse.json({ success: true, data: clientReports });

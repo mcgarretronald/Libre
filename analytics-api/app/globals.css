@@ -4,7 +4,7 @@
 /* ── shadcn/ui CSS variable tokens ─────────────────────────────── */
 :root {
   /* Light mode */
-  --background: 0 0% 98%;
+  --background: 220 14% 96%; /* A softer, user-friendly slate off-white */
   --foreground: 240 10% 10%;
   --card: 0 0% 100%;
   --card-foreground: 240 10% 10%;
@@ -93,6 +93,16 @@ body {
   color: hsl(var(--foreground));
   font-family: 'Plus Jakarta Sans', 'Outfit', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* ── Fix browser autofill styling in dark mode ──────────────────── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px hsl(var(--background)) inset !important;
+  -webkit-text-fill-color: hsl(var(--foreground)) !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 /* ── Smooth theme transition ────────────────────────────────────── */

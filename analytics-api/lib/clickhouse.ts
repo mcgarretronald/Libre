@@ -15,12 +15,14 @@ export async function initializeReportsTable() {
     await internalClient.query({
       query: `
         CREATE TABLE IF NOT EXISTS jacaranda_reports (
-          id           UUID DEFAULT generateUUIDv4(),
-          user_id      String,
-          db_conn_id   String,
-          query_text   String,
-          report_html  String,
-          created_at   DateTime DEFAULT now()
+          id                 String,
+          user_id            String,
+          db_conn_id         String,
+          query_text         String,
+          report_html        String,
+          brand_colors       String,
+          fallback_simulated UInt8 DEFAULT 0,
+          created_at         DateTime DEFAULT now()
         ) ENGINE = MergeTree()
         ORDER BY (user_id, created_at)
       `,

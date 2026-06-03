@@ -10,8 +10,8 @@ This flowchart illustrates the complete production lifecycle of a user query, fr
 
 ```mermaid
 flowchart TD
-    User([End User]) -->|1. Natural Language Question| WebPortal[Next.js Portal Web UI]
-    WebPortal -->|2. Secure API Request| BFF[Next.js BFF API Routes]
+    User([End User]) -->|1. Natural Language Question| WebPortal[Next.js Portal Web UI (Vercel)]
+    WebPortal -->|2. Secure API Request| BFF[Next.js BFF API Routes (Vercel)]
     
     subgraph Secure Backend Integration
         BFF -->|3. Fetch Real Data (Read-Only)| ClickHouse[(ClickHouse Analytics DB)]
@@ -25,11 +25,11 @@ flowchart TD
     BFF -->|8. Server-Side Sanitization| WebPortal
     WebPortal -->|9. Renders Interactive UI Iframe| User
     
-    User -->|10. Dispatch Campaign (CSV/Manual)| CronWorker[Node.js Cron Worker Docker Service]
+    User -->|10. Dispatch Campaign (UI)| WebPortal
     
-    subgraph Automated Dispatch Pipeline
-        CronWorker -->|11. Wake on Schedule| MongoDB
-        CronWorker -->|12. Puppeteer Export (Optional PDF)| HeadlessBrowser[System Chromium Alpine]
+    subgraph Automated Dispatch Pipeline (Render)
+        CronWorker[Node.js Cron Worker Docker Service] -->|11. Real-time Change Streams| MongoDB
+        CronWorker -->|12. Fetch PDF Payload| ServerlessChromium[Serverless Chromium-Min API]
         CronWorker -->|13. Build Professional Template| EmailDispatcher[Nodemailer SMTP]
     end
     
@@ -49,13 +49,18 @@ The Campaign Dispatch mechanism allows operators to:
 - Upload bulk CSV distribution lists dynamically.
 - Manage active and archived automated reporting schedules via a modern SaaS interface.
 
-### 3. Asynchronous Cron Scheduling
-The architecture strictly separates the frontend web server (`portal-web`) from the background task processor (`portal-cron`). 
-- **Immediate Dispatches:** Triggers a webhook (`/api/analytics/campaigns`) to send emails instantly without blocking the UI thread.
-- **Scheduled Dispatches:** Uses `node-cron` to parse custom cron expressions and dispatch reports automatically from the detached worker.
+### 3. Real-Time Distributed Architecture
+The architecture strictly separates the user-facing web server from the background task processor, optimized for serverless deployments.
+- **Vercel (Frontend & API):** Handles UI rendering and API requests.
+- **Render (Cron Worker):** A persistent background Docker container that monitors the database.
+- **MongoDB Change Streams:** Replaces outdated HTTP webhooks and crude polling. The worker uses MongoDB replica set Change Streams to instantly react to campaigns queued from the Vercel dashboard.
 
-### 4. Headless PDF Generation Engine & Email Templates
-The system sends highly professional HTML email briefs summarizing the data insights. When necessary, it utilizes a native Chromium installation inside an Alpine Docker container to capture high-fidelity PDF snapshots of the AI-generated interactive charts via Puppeteer.
+### 4. Serverless PDF Generation Engine
+To bypass strict serverless function limits (like Vercel's 50MB Hobby tier limit), the PDF generation pipeline utilizes `@sparticuz/chromium-min`. The Chromium binary is fetched remotely at runtime, allowing the platform to capture high-fidelity PDF snapshots of the AI-generated interactive charts without bloating the deployment size.
+
+### 5. LibreChat OpenAPI Integration
+The platform exposes an OpenAPI specification (`openapi.json`) that allows LibreChat Custom Actions and Agents to autonomously interact with the analytics API. 
+*Note: Ensure the `servers` URL in the LibreChat plugin configuration points strictly to your production Vercel deployment URL to ensure successful AI routing.*
 
 ---
 
@@ -72,18 +77,17 @@ This stack was explicitly designed to mitigate common vulnerabilities found in o
 
 ---
 
-## 🛠️ Docker Deployment Guide
+## 🛠️ Deployment Guide
 
-The entire stack is configured via `docker-compose.yml` for seamless, single-command deployment.
-
-### Step 1: Environment Configuration
-Create a `.env` file at the root of the project with the following keys:
+### Environment Configuration
+Ensure your `.env` variables are configured across both your Vercel and Render deployments:
 ```ini
 # Core Configuration
-MONGO_URI=mongodb://localhost:27017/librechat
+APP_URL=https://libre-analysis.vercel.app
+MONGO_URI=mongodb+srv://.../librechat
 OPENAI_API_KEY=sk-proj-...
 
-# SMTP Configuration (For Email Dispatch)
+# SMTP Configuration (For Email Dispatch - Render Worker)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
@@ -96,12 +100,13 @@ CLICKHOUSE_PASSWORD=your-clickhouse-password
 CLICKHOUSE_DATABASE=default
 ```
 
-### Step 2: Spin Up the Stack
-Run the following command to build and start the infrastructure:
-```bash
-docker compose up -d --build
+### Vercel (Frontend & API)
+Deploy the Next.js application to Vercel. Ensure `maxDuration` overrides are removed for Hobby tier compliance.
+
+### Render (LibreChat & Cron Worker)
+The backend worker is bundled securely with LibreChat via `Dockerfile.libre`:
+```dockerfile
+# Starts LibreChat Backend and Cron Worker simultaneously
+CMD ["sh", "-c", "node /app/cron/cron-worker.js & npm run backend"]
 ```
-This deploys the interconnected services:
-1. `portal-web`: The primary Next.js analytical UI gateway (Port `3000`).
-2. `portal-cron`: The Node.js headless background job worker for campaign dispatch.
-3. `librechat`: The core conversational engine (if enabled).
+Ensure Render's build configuration uses `Dockerfile.libre` as the target Dockerfile to correctly spawn the worker process.

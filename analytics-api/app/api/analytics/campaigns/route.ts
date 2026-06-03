@@ -110,16 +110,12 @@ export async function PATCH(req: Request) {
       } catch (e) {}
       return NextResponse.json({ success: true, message: 'Paused' });
     } else if (action === 'redispatch') {
+      await db.collection('jacaranda_campaigns').updateOne(
+        { campaignId: id },
+        { $set: { status: 'redispatch_pending' } }
+      );
       await client.close();
-      try {
-        await fetch(`${CRON_WORKER_URL}/dispatch-immediate/`, {
-          method: 'POST',
-          body: JSON.stringify(campaign),
-        });
-      } catch (e) {
-        return NextResponse.json({ success: false, error: 'Cron worker unreachable' }, { status: 500 });
-      }
-      return NextResponse.json({ success: true, message: 'Redispatched' });
+      return NextResponse.json({ success: true, message: 'Redispatched via worker polling' });
     } else {
       await client.close();
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 });

@@ -51,19 +51,8 @@ export async function POST(req: Request) {
     await db.collection('jacaranda_campaigns').insertOne(campaign);
     await client.close();
 
-    // Notify background worker to register or execute the job
-    try {
-      const CRON_WORKER_URL = process.env.CRON_WORKER_URL || 'http://localhost:4000';
-      const endpoint = schedule === 'immediate' ? 'dispatch-immediate' : 'start';
-      await fetch(`${CRON_WORKER_URL}/${endpoint}/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(campaign),
-      });
-    } catch (webhookErr) {
-      // Silent fail: worker will sync on next poll interval
-      console.error('[Schedule] Could not notify cron worker:', webhookErr);
-    }
+    // The cron-worker running in Docker will automatically poll the database
+    // and pick up both scheduled and immediate dispatches.
 
     return NextResponse.json({
       success: true,

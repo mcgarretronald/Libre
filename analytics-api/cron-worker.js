@@ -280,22 +280,77 @@ async function processScheduledCampaigns() {
       console.log('[Cron] HTTP control server running on port 4000');
     });
 
-    // Send any campaigns that were marked immediate but never dispatched
-    const immediateCampaigns = await db
-      .collection('jacaranda_campaigns')
-      .find({ status: 'dispatched', lastRunAt: { $exists: false } })
-      .toArray();
+    // ---------------------------------------------------------
+    // Scalable Real-time Sync via Change Streams
+    // ---------------------------------------------------------
+    // We try to use MongoDB Change Streams first (push-based, 0 polling overhead).
+    // If the database is a standalone instance without replica sets enabled,
+    // we gracefully fall back to a lightweight polling mechanism.
 
-    if (immediateCampaigns.length > 0) {
-      console.log(`[Cron] Processing ${immediateCampaigns.length} pending immediate campaign(s)...`);
-      for (const campaign of immediateCampaigns) {
-        await dispatchCampaign(db, campaign, transporter);
+    const syncCampaigns = async () => {
+      try {
+        const immediateCampaigns = await db.collection('jacaranda_campaigns').find({
+          $or: [
+            { status: 'dispatched', lastRunAt: { $exists: false } },
+            { status: 'redispatch_pending' }
+          ]
+        }).toArray();
+
+        for (const campaign of immediateCampaigns) {
+          if (campaign.status === 'redispatch_pending') {
+            await db.collection('jacaranda_campaigns').updateOne(
+              { campaignId: campaign.campaignId },
+              { $set: { status: 'dispatched' } }
+            );
+          }
+          await dispatchCampaign(db, campaign, transporter);
+        }
+
+        const scheduledCampaigns = await db.collection('jacaranda_campaigns').find({ status: 'scheduled' }).toArray();
+        for (const campaign of scheduledCampaigns) {
+          if (!activeTasks.has(campaign.campaignId)) {
+            console.log(`[Cron] Scheduled new campaign ${campaign.campaignId}`);
+            registerTask(campaign, db, transporter);
+          }
+        }
+
+        const activeIds = new Set(scheduledCampaigns.map(c => c.campaignId));
+        for (const [id, task] of activeTasks.entries()) {
+          if (!activeIds.has(id)) {
+            task.stop();
+            activeTasks.delete(id);
+          }
+        }
+      } catch (e) {
+        console.error('[Cron] Sync error:', e.message);
       }
+    };
+
+    // Perform an initial sync on startup
+    await syncCampaigns();
+
+    try {
+      const changeStream = db.collection('jacaranda_campaigns').watch();
+      console.log('[Cron] Successfully connected to MongoDB Change Stream (Real-time mode)');
+      
+      changeStream.on('change', async (change) => {
+        if (change.operationType === 'insert' || change.operationType === 'update' || change.operationType === 'delete') {
+          console.log(`[Cron] Real-time event detected (${change.operationType}). Syncing...`);
+          await syncCampaigns();
+        }
+      });
+
+      changeStream.on('error', (err) => {
+        console.warn('[Cron] Change stream dropped. Falling back to polling mode.');
+        setInterval(syncCampaigns, 15000);
+      });
+    } catch (e) {
+      console.log('[Cron] Change streams not supported on this MongoDB instance. Using lightweight polling (15s).');
+      setInterval(syncCampaigns, 15000);
     }
 
   } catch (err) {
     console.error('[Cron] Fatal error:', err.message);
-    await client.close();
     process.exit(1);
   }
 }

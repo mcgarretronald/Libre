@@ -152,10 +152,14 @@ export default function CorporatePortal() {
         setAttachedImageBase64(null); setAttachedImageName(null);
         setTimeout(() => setGenerationStage('idle'), 600);
         setTimeout(() => reportListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 700);
+      } else {
+        alert(`Generation failed: ${data.error || 'Unknown error'}`);
+        setGenerationStage('idle');
       }
-    } catch (err) {
+    } catch (err: any) {
       clearTimeout(t1); clearTimeout(t2);
       setGenerationStage('idle');
+      alert(`Network or timeout error: ${err.message}`);
     } finally { setIsProcessing(false); }
   };
 

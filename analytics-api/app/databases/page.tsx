@@ -101,7 +101,7 @@ export default function DatabasesPortal() {
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar with mobile responsiveness */}
       <div className={`
-        fixed inset-y-0 left-0 z-40 w-[280px] shrink-0 transform transition-transform duration-300 ease-in-out
+        fixed inset-y-0 left-0 z-40 w-[220px] shrink-0 transform transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         md:relative md:translate-x-0
       `}>

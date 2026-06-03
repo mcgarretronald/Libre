@@ -55,7 +55,7 @@ async function dispatchCampaign(db, campaign, transporter) {
   console.log(`[Cron] Recipients: ${campaign.recipients.length}, mode: ${campaign.scheduleType || 'immediate'}`);
 
   const chResult = await clickhouse.query({
-    query: `SELECT id, query_text as query, report_html FROM jacaranda_reports WHERE id = '${campaign.reportId}'`,
+    query: `SELECT id, query_text as query FROM jacaranda_reports WHERE id = '${campaign.reportId}'`,
     format: 'JSONEachRow'
   });
   const chRows = await chResult.json();

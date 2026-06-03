@@ -30,7 +30,7 @@ export function Sidebar({ activeView, setActiveView, isProcessing }: SidebarProp
 
   return (
     <aside
-      className="w-[220px] flex flex-col flex-shrink-0 z-20 relative border-r transition-colors duration-300"
+      className="w-[220px] h-full flex flex-col flex-shrink-0 z-20 relative border-r transition-colors duration-300"
       style={{
         background: theme === 'dark'
           ? 'linear-gradient(170deg, #3B143C 0%, #2a0e2e 100%)'

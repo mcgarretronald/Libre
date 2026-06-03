@@ -12,8 +12,10 @@ const clickhouse = createClient({
   database: process.env.CLICKHOUSE_DATABASE || 'default',
 });
 
-// Use the public APP_URL defined in the environment or default to localhost
-const APP_URL = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
+// The PDF export route lives on Vercel
+const APP_URL = process.env.APP_URL?.includes('vercel.app') 
+  ? process.env.APP_URL 
+  : 'https://libre-analysis.vercel.app';
 
 // Store active cron tasks to allow for dynamic stopping
 const activeTasks = new Map();

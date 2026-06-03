@@ -161,6 +161,8 @@ CRITICAL HTML RULES:
 3. Do NOT use artifact syntax (like :::artifact). 
 4. Do NOT use markdown for bolding or formatting (like **text**).
 5. If you include textual analysis, you MUST wrap it in beautiful, modern HTML tags (e.g., <div style="font-family: sans-serif; padding: 1.5rem; background: #fafafa; border-radius: 8px; margin-top: 1rem;"><h2 style="color: #4A154B; margin-bottom: 0.5rem;">Your Title</h2><p style="color: #444; line-height: 1.6;">Your analysis...</p></div>). Ensure the text has a clear title and body.
+6. You MUST use Chart.js via exactly this CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+7. You MUST render charts using <canvas> tags. DO NOT use <img> tags or external image chart APIs (like QuickChart).
 
 Only use tables and columns from this schema:
 ${injectedSchema}

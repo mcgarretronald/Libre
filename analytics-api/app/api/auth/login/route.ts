@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     }
     console.error(`[Login] Could not reach LibreChat at ${LIBRECHAT_URL}/api/auth/login:`, err.message);
     return NextResponse.json(
-      { error: `Could not reach the authentication service. Please try again shortly.` },
+      { error: `Could not reach the authentication service at ${LIBRECHAT_URL}. Please ensure LIBRECHAT_URL is set in Vercel environment variables.` },
       { status: 503 }
     );
   }

@@ -86,3 +86,45 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export async function PATCH(req: Request) {
+  try {
+    const { id, action } = await req.json();
+    if (!id || !action) return NextResponse.json({ error: 'Missing id or action' }, { status: 400 });
+
+    const client = new MongoClient(MONGO_URI!);
+    await client.connect();
+    const db = client.db('LibreChat');
+    const campaign = await db.collection('jacaranda_campaigns').findOne({ campaignId: id });
+    
+    if (!campaign) {
+      await client.close();
+      return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
+    }
+
+    if (action === 'pause') {
+      await db.collection('jacaranda_campaigns').updateOne({ campaignId: id }, { $set: { status: 'paused' } });
+      await client.close();
+      try {
+        await fetch(`${CRON_WORKER_URL}/kill/${id}`, { method: 'DELETE' });
+      } catch (e) {}
+      return NextResponse.json({ success: true, message: 'Paused' });
+    } else if (action === 'redispatch') {
+      await client.close();
+      try {
+        await fetch(`${CRON_WORKER_URL}/dispatch-immediate/`, {
+          method: 'POST',
+          body: JSON.stringify(campaign),
+        });
+      } catch (e) {
+        return NextResponse.json({ success: false, error: 'Cron worker unreachable' }, { status: 500 });
+      }
+      return NextResponse.json({ success: true, message: 'Redispatched' });
+    } else {
+      await client.close();
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

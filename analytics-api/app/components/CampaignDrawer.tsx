@@ -105,16 +105,30 @@ export function CampaignDrawer({
                 <div className="flex gap-2 mb-3">
                   <input
                     type="email"
-                    placeholder="Add email address..."
+                    placeholder="Enter email address..."
                     value={manualEmail}
                     onChange={(e) => setManualEmail(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
                     className="flex-1 px-3 py-2.5 text-sm border border-input rounded-lg focus:outline-none focus:ring-1 focus:ring-ring bg-background text-foreground font-medium shadow-sm"
                   />
-                  <label className="px-3 py-2.5 border border-input hover:border-ring rounded-lg cursor-pointer flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors group bg-background shadow-sm">
+                  <button
+                    type="button"
+                    onClick={addEmail}
+                    disabled={!manualEmail.includes('@')}
+                    className="px-4 py-2.5 bg-muted text-foreground font-bold text-xs uppercase tracking-wider rounded-lg hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm border border-border"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="mb-4">
+                  <label className="w-full px-3 py-3 border border-dashed border-border hover:border-ring hover:bg-muted/30 rounded-lg cursor-pointer flex flex-col items-center justify-center gap-1.5 text-muted-foreground hover:text-foreground transition-all group bg-background">
                     <input type="file" accept=".csv" onChange={handleFileChange} className="hidden" />
                     <Download className="w-4 h-4 rotate-180 group-hover:-translate-y-0.5 transition-transform" />
-                    <span className="text-xs font-black uppercase tracking-wider">CSV</span>
+                    <div className="text-center">
+                      <span className="text-xs font-bold block text-foreground">Upload CSV file</span>
+                      <span className="text-[10px] font-medium opacity-70">Bulk add multiple recipients</span>
+                    </div>
                   </label>
                 </div>
 

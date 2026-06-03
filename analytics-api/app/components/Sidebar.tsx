@@ -72,9 +72,13 @@ export function Sidebar({ activeView, setActiveView, isProcessing }: SidebarProp
 
         <a
           href="/databases"
-          className="w-full flex items-center gap-3 px-3 py-2.5 text-[13px] font-semibold rounded-xl transition-all duration-200 text-white/45 hover:bg-white/5 hover:text-white/75"
+          className={`w-full flex items-center gap-3 px-3 py-2.5 text-[13px] font-semibold rounded-xl transition-all duration-200 ${
+            activeView === 'databases' ? 'bg-white/10 text-white' : 'text-white/45 hover:bg-white/5 hover:text-white/75'
+          }`}
         >
-          <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-white/8">
+          <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+            activeView === 'databases' ? 'bg-indigo-500' : 'bg-white/8'
+          }`}>
             <Database className="w-3.5 h-3.5" />
           </div>
           Data Sources
@@ -126,16 +130,6 @@ export function Sidebar({ activeView, setActiveView, isProcessing }: SidebarProp
           >
             <DropdownMenuLabel className="text-xs">My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-
-            <DropdownMenuItem className="gap-2.5" onClick={() => {}}>
-              <User className="w-4 h-4 text-muted-foreground" />
-              Profile
-            </DropdownMenuItem>
-
-            <DropdownMenuItem className="gap-2.5" onClick={() => {}}>
-              <Settings className="w-4 h-4 text-muted-foreground" />
-              Settings
-            </DropdownMenuItem>
 
             <DropdownMenuItem asChild className="gap-2.5">
               <a href="/databases">

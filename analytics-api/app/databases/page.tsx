@@ -4,12 +4,13 @@ import React, { useState, useEffect } from 'react';
 import {
   Database, Plus, Trash2, CheckCircle, AlertCircle,
   RefreshCw, Activity, Server, ChevronRight, Shield,
-  ArrowLeft, Zap, Lock, Globe, Eye, EyeOff,
+  ArrowLeft, Zap, Lock, Globe, Eye, EyeOff, Menu,
 } from 'lucide-react';
 import { Sidebar } from '../components/Sidebar';
 import { Badge } from '../components/ui/badge';
 
 export default function DatabasesPortal() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [connections, setConnections] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -98,20 +99,43 @@ export default function DatabasesPortal() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar
-        activeView="campaigner"
-        setActiveView={() => { window.location.href = '/'; }}
-        isProcessing={false}
-      />
+      {/* Sidebar with mobile responsiveness */}
+      <div className={`
+        fixed inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:relative md:translate-x-0
+      `}>
+        <Sidebar
+          activeView="databases"
+          setActiveView={() => { window.location.href = '/'; }}
+          isProcessing={false}
+        />
+      </div>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Header */}
-        <header className="h-14 flex items-center gap-3 px-6 shrink-0 border-b border-border bg-card">
-          <a href="/" className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-[12px] font-semibold">
-            <ArrowLeft className="w-3.5 h-3.5" /> Portal
-          </a>
-          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40" />
+        <header className="h-14 flex items-center gap-3 px-4 md:px-6 shrink-0 border-b border-border bg-card">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="md:hidden p-2 -ml-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="hidden md:flex items-center gap-1.5">
+            <a href="/" className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-[12px] font-semibold">
+              <ArrowLeft className="w-3.5 h-3.5" /> Portal
+            </a>
+            <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40" />
+          </div>
           <div className="flex items-center gap-2">
             <Database className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-[12px] font-bold tracking-widest uppercase text-muted-foreground">Data Sources</span>

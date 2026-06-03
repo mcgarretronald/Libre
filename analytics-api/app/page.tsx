@@ -36,6 +36,16 @@ export default function CorporatePortal() {
   // View State
   const [activeView, setActiveView] = useState<'generator' | 'campaigner'>('generator');
 
+  useEffect(() => {
+    const saved = localStorage.getItem('analytics_active_view');
+    if (saved === 'campaigner' || saved === 'generator') setActiveView(saved);
+  }, []);
+
+  const handleSetActiveView = (view: 'generator' | 'campaigner') => {
+    setActiveView(view);
+    localStorage.setItem('analytics_active_view', view);
+  };
+
   // Chat and Generation State
   const [chatInput, setChatInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -85,12 +95,19 @@ export default function CorporatePortal() {
       .catch(console.error);
   }, []);
 
+  const fetchCampaigns = async () => {
+    try {
+      const r = await fetch('/api/analytics/campaigns');
+      const d = await r.json();
+      if (d.success && Array.isArray(d.data)) setCampaigns(d.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     if (activeView !== 'campaigner') return;
-    fetch('/api/analytics/campaigns')
-      .then(r => r.json())
-      .then(d => { if (d.success && Array.isArray(d.data)) setCampaigns(d.data); })
-      .catch(console.error);
+    fetchCampaigns();
   }, [activeView]);
 
   const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -190,12 +207,26 @@ export default function CorporatePortal() {
     try { await fetch(`/api/analytics/campaigns/${id}`, { method: 'DELETE' }); } catch (_) {}
   };
 
+  const handleCampaignAction = async (id: string, action: 'pause' | 'redispatch') => {
+    try {
+      await fetch('/api/analytics/campaigns', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, action }),
+      });
+      // Optionally refresh campaigns
+      fetchCampaigns();
+    } catch (e) {
+      console.error('Action failed', e);
+    }
+  };
+
   const activeConnection = connections.find(c => c.id === databaseId);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
 
-      <Sidebar activeView={activeView} setActiveView={setActiveView} isProcessing={isProcessing} />
+      <Sidebar activeView={activeView} setActiveView={handleSetActiveView} isProcessing={isProcessing} />
 
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
@@ -411,7 +442,8 @@ export default function CorporatePortal() {
               <CampaignList
                 campaigns={campaigns}
                 onDelete={handleDeleteCampaign}
-                onNewCampaign={() => setActiveView('generator')}
+                onAction={handleCampaignAction}
+                onNewCampaign={() => handleSetActiveView('generator')}
               />
             </div>
           </div>

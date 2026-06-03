@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import {
   MoreHorizontal, Plus, Calendar, Users,
-  Send, Trash2, Play, Pause, Clock,
+  Send, Trash2, Play, Pause, Clock, RefreshCw
 } from 'lucide-react';
 
 interface Campaign {
@@ -21,6 +21,7 @@ interface CampaignListProps {
   campaigns: Campaign[];
   onDelete: (id: string) => void;
   onNewCampaign?: () => void;
+  onAction?: (id: string, action: 'pause' | 'redispatch') => Promise<void>;
 }
 
 const SCHEDULE_TAG_COLORS = [
@@ -73,8 +74,20 @@ function BigStat({ value, label }: { value: number | string; label: string }) {
   );
 }
 
-function CampaignRow({ camp, onDelete }: { camp: Campaign; onDelete: (id: string) => void }) {
+function CampaignRow({ camp, onDelete, onAction }: { camp: Campaign; onDelete: (id: string) => void; onAction?: (id: string, action: 'pause' | 'redispatch') => Promise<void> }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+
+  const handleAction = async (action: 'pause' | 'redispatch') => {
+    if (!onAction) return;
+    setIsActionLoading(true);
+    setMenuOpen(false);
+    try {
+      await onAction(camp.campaignId, action);
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
 
   const title = camp.reportDetails?.query || 'Analytics Campaign';
   const description = `Automated ${camp.scheduleType === 'immediate' ? 'one-time' : camp.scheduleType} report dispatch — ${camp.recipients?.length ?? 0} recipient${(camp.recipients?.length ?? 0) !== 1 ? 's' : ''}.`;
@@ -130,22 +143,25 @@ function CampaignRow({ camp, onDelete }: { camp: Campaign; onDelete: (id: string
               <div className="relative">
                 <button
                   onClick={() => setMenuOpen(p => !p)}
-                  className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                  disabled={isActionLoading}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-300 hover:text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
                 >
-                  <MoreHorizontal className="w-4 h-4" />
+                  {isActionLoading ? <RefreshCw className="w-4 h-4 animate-spin text-indigo-500" /> : <MoreHorizontal className="w-4 h-4" />}
                 </button>
                 {menuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(false)} />
                     <div className="absolute right-0 top-8 z-50 bg-white border border-slate-200 rounded-xl shadow-xl w-40 overflow-hidden">
-                      <button onClick={() => setMenuOpen(false)}
+                      <button onClick={() => handleAction('redispatch')}
                         className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50 text-left border-b border-slate-100">
                         <Play className="w-3.5 h-3.5 text-emerald-500" />Re-dispatch
                       </button>
-                      <button onClick={() => setMenuOpen(false)}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50 text-left border-b border-slate-100">
-                        <Pause className="w-3.5 h-3.5 text-amber-500" />Pause
-                      </button>
+                      {camp.status === 'scheduled' && (
+                        <button onClick={() => handleAction('pause')}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-slate-600 hover:bg-slate-50 text-left border-b border-slate-100">
+                          <Pause className="w-3.5 h-3.5 text-amber-500" />Pause
+                        </button>
+                      )}
                       <button onClick={() => { setMenuOpen(false); if (confirm('Delete this campaign?')) onDelete(camp.campaignId); }}
                         className="w-full flex items-center gap-3 px-4 py-2.5 text-[12px] font-medium text-red-500 hover:bg-red-50 text-left">
                         <Trash2 className="w-3.5 h-3.5" />Delete

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "cron": "node cron-worker.js"
+    "cron": "node --env-file=.env.local cron-worker.js"
   },
   "dependencies": {
     "@clickhouse/client": "^1.18.5",

@@ -14,16 +14,29 @@ export async function GET() {
     
     const reports = await result.json() as any[];
 
-    // Strip large HTML blobs and replace with URL references for the UI
-    const clientReports = reports.map((r: any) => ({
-      id: r.id,
-      query: r.query,
-      timestamp: r.timestamp,
-      pdfUrl: `/api/analytics/export/${r.id}?format=pdf`,
-      htmlUrl: `/api/analytics/html/${r.id}`,
-      hasPdf: true,
-      hasHtml: !!r.report_html,
-    }));
+    // Process reports for the UI and compute text summaries on-the-fly
+    const clientReports = reports.map((r: any) => {
+      let plainTextSummary = '';
+      if (r.report_html) {
+        plainTextSummary = r.report_html
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove styles
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove scripts
+          .replace(/<[^>]+>/g, ' ') // Remove HTML tags
+          .replace(/\s+/g, ' ') // Normalize spaces
+          .trim();
+      }
+
+      return {
+        id: r.id,
+        query: r.query,
+        summary: plainTextSummary,
+        timestamp: r.timestamp,
+        pdfUrl: `/api/analytics/export/${r.id}?format=pdf`,
+        htmlUrl: `/api/analytics/html/${r.id}`,
+        hasPdf: true,
+        hasHtml: !!r.report_html,
+      };
+    });
 
     return NextResponse.json({ success: true, data: clientReports });
   } catch (error: any) {

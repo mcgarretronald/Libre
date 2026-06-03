@@ -16,8 +16,7 @@ export const dynamic = 'force-dynamic';
 const schemaCache = new Map<string, { timestamp: number; schema: any[] }>();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-// Scores and filters schema tables by keyword relevance to the user query.
-// Keeps the context sent to the AI within a token budget.
+// Filter database schema by relevance to the query to fit within the AI context window.
 function filterSchema(schema: any[], query: string, maxTokens: number = 4000): string {
   const normalizedQuery = query.toLowerCase();
   const keywords = normalizedQuery.split(/\s+/).filter(w => w.length > 3);
@@ -66,7 +65,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No database selected' }, { status: 400 });
     }
 
-    // Block any destructive SQL keywords before they reach the AI
+    // Prevent destructive queries from reaching the AI engine
     const normalizedQuery = query.toUpperCase();
     if (
       normalizedQuery.includes('DROP') ||
@@ -77,7 +76,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Destructive commands are not allowed' }, { status: 403 });
     }
 
-    // Load the target database connection for this user
+    // Retrieve connection credentials
     const { db } = await connectToDatabase();
     const connection = await db.collection('jacaranda_connections').findOne({
       _id: new ObjectId(databaseId),
@@ -88,7 +87,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Database connection not found or access denied' }, { status: 404 });
     }
 
-    // Fetch and cache the target database schema
+    // Check cache for schema to save DB hits
     let rawSchema: any[] = [];
     const cacheKey = connection._id.toString();
     const cached = schemaCache.get(cacheKey);
@@ -143,7 +142,7 @@ export async function POST(req: Request) {
     console.log(`[Generate] Schema tokens used: ~${Math.ceil(injectedSchema.length / 4)}`);
     console.log('[Generate] Injected Schema:\n', injectedSchema);
 
-    // Send the query and schema to the AI agent with a 5 minute timeout
+    // Trigger the AI report generation
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
     const agentPaths = ['/api/agents/v1/chat/completions'];

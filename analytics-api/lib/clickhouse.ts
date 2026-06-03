@@ -1,7 +1,6 @@
 import { createClient } from '@clickhouse/client';
 
-// ClickHouse client for the internal Jacaranda reporting database.
-// All credentials must be provided via environment variables.
+// Internal analytics database connection
 export const internalClient = createClient({
   url: process.env.CLICKHOUSE_HOST || 'http://localhost:8123',
   username: process.env.CLICKHOUSE_USER || 'default',
@@ -9,7 +8,7 @@ export const internalClient = createClient({
   database: process.env.CLICKHOUSE_DATABASE || 'default',
 });
 
-// Creates the reports table if it does not already exist
+// Ensure internal reports schema exists
 export async function initializeReportsTable() {
   try {
     await internalClient.query({

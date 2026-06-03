@@ -27,16 +27,16 @@ interface Report {
   fallbackSimulated?: boolean;
 }
 
-interface Recipient { email: string; name?: string; }
+interface Recipient { email: string; name?: string; isActive?: boolean; }
 
 export default function CorporatePortal() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  // ── View ─────────────────────────────────────────────────────────
+  // View State
   const [activeView, setActiveView] = useState<'generator' | 'campaigner'>('generator');
 
-  // ── Chat / generation ────────────────────────────────────────────
+  // Chat and Generation State
   const [chatInput, setChatInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [generationStage, setGenerationStage] = useState<Stage>('idle');
@@ -44,7 +44,7 @@ export default function CorporatePortal() {
   const [attachedImageBase64, setAttachedImageBase64] = useState<string | null>(null);
   const [attachedImageName, setAttachedImageName] = useState<string | null>(null);
 
-  // ── Settings tray ────────────────────────────────────────────────
+  // Settings and Connections State
   const [showSettings, setShowSettings] = useState(false);
   const [connections, setConnections] = useState<any[]>([]);
   const [databaseId, setDatabaseId] = useState('');
@@ -54,14 +54,14 @@ export default function CorporatePortal() {
     accent: '#1E6B65',
   });
 
-  // ── Campaign drawer ───────────────────────────────────────────────
+  // Campaign Drawer State
   const [drawerReport, setDrawerReport] = useState<Report | null>(null);
   const [csvRecipients, setCsvRecipients] = useState<Recipient[]>([]);
   const [schedule, setSchedule] = useState('immediate');
   const [customCron, setCustomCron] = useState('');
   const [isSending, setIsSending] = useState(false);
 
-  // ── Campaign list ─────────────────────────────────────────────────
+  // Active Campaigns State
   const [campaigns, setCampaigns] = useState<any[]>([]);
 
   const reportListRef = useRef<HTMLDivElement>(null);
@@ -147,19 +147,24 @@ export default function CorporatePortal() {
     try { await fetch(`/api/analytics/reports/${id}`, { method: 'DELETE' }); } catch (_) {}
   };
 
-  const handleDispatch = async () => {
+  const handleDispatch = async (subject: string, body: string): Promise<boolean> => {
     const activeRecipients = csvRecipients.filter(r => r.isActive !== false);
-    if (!drawerReport || activeRecipients.length === 0) return;
+    if (!drawerReport || activeRecipients.length === 0) return false;
     setIsSending(true);
     try {
-      await fetch('/api/analytics/campaigns', {
+      const res = await fetch('/api/analytics/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reportId: drawerReport.id, recipients: activeRecipients, schedule, customCron }),
+        body: JSON.stringify({ reportId: drawerReport.id, recipients: activeRecipients, schedule, customCron, subject, body }),
       });
-      setDrawerReport(null); setCsvRecipients([]);
-    } catch (e) { console.error(e); }
-    finally { setIsSending(false); }
+      if (!res.ok) return false;
+      return true;
+    } catch (e) { 
+      console.error(e); 
+      return false;
+    } finally { 
+      setIsSending(false); 
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

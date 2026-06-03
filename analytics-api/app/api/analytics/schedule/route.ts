@@ -1,20 +1,20 @@
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 
-// MONGO_URI must be set in your environment. Never hardcode credentials here.
+// Enforce environment-based credential loading
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
 
 export async function POST(req: Request) {
   try {
     const payload = await req.json();
-    const { reportId, recipients, schedule, customCron } = payload;
+    const { reportId, recipients, schedule, customCron, subject, body } = payload;
 
     if (!reportId || !recipients || recipients.length === 0) {
       return NextResponse.json({ error: 'Missing required campaign data' }, { status: 400 });
     }
 
-    // Convert the schedule label to a cron expression
+    // Map predefined schedule labels to standard cron expressions
     let cronExpression = '';
     if (schedule === 'immediate') {
       cronExpression = 'immediate';
@@ -38,27 +38,30 @@ export async function POST(req: Request) {
       recipients,
       scheduleType: schedule,
       cronExpression,
+      subject,
+      body,
       status: schedule === 'immediate' ? 'dispatched' : 'scheduled',
       createdAt: new Date().toISOString(),
     };
 
-    // Save the campaign to MongoDB
+    // Persist campaign metadata in database
     const client = new MongoClient(MONGO_URI!);
     await client.connect();
     const db = client.db('LibreChat');
     await db.collection('jacaranda_campaigns').insertOne(campaign);
     await client.close();
 
-    // Tell the cron worker about the new campaign
+    // Notify background worker to register or execute the job
     try {
+      const CRON_WORKER_URL = process.env.CRON_WORKER_URL || 'http://localhost:4000';
       const endpoint = schedule === 'immediate' ? 'dispatch-immediate' : 'start';
-      await fetch(`http://portal-cron:4000/${endpoint}/`, {
+      await fetch(`${CRON_WORKER_URL}/${endpoint}/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(campaign),
       });
     } catch (webhookErr) {
-      // Not fatal — the cron worker will pick it up on next poll
+      // Silent fail: worker will sync on next poll interval
       console.error('[Schedule] Could not notify cron worker:', webhookErr);
     }
 

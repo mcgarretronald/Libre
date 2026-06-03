@@ -12,14 +12,15 @@ const clickhouse = createClient({
   database: process.env.CLICKHOUSE_DATABASE || 'default',
 });
 
-// Public URL of the deployed portal. Set APP_URL in your environment.
+// Use the public APP_URL defined in the environment or default to localhost
 const APP_URL = (process.env.APP_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-// Tracks live cron task instances so they can be stopped on demand
+// Store active cron tasks to allow for dynamic stopping
 const activeTasks = new Map();
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/librechat';
-// Creates and returns a configured nodemailer SMTP transporter
+
+// Configure the SMTP client for email dispatch
 function createTransporter() {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -32,8 +33,7 @@ function createTransporter() {
   });
 }
 
-// Downloads a URL and returns its contents as a Buffer.
-// Used to fetch the PDF export before attaching it to the email.
+// Download the PDF from the provided URL and return a Buffer
 function fetchBuffer(url) {
   return new Promise((resolve, reject) => {
     const lib = url.startsWith('https') ? https : http;
@@ -49,7 +49,7 @@ function fetchBuffer(url) {
   });
 }
 
-// Sends the report email to every recipient in a campaign
+// Dispatch the campaign email to all active recipients
 async function dispatchCampaign(db, campaign, transporter) {
   console.log(`[Cron] Dispatching campaign ${campaign.campaignId}`);
   console.log(`[Cron] Recipients: ${campaign.recipients.length}, mode: ${campaign.scheduleType || 'immediate'}`);
@@ -63,7 +63,7 @@ async function dispatchCampaign(db, campaign, transporter) {
   const reportTitle = (report?.query?.length > 60 ? report.query.substring(0, 60) + '...' : report?.query) || 'Analytics Report';
   console.log(`[Cron] Report: "${reportTitle}"`);
 
-  // Try to fetch the PDF export to attach it to the email
+  // Download the PDF report attachment
   let pdfBuffer = null;
   const pdfFilename = `jacaranda-report-${String(campaign.reportId).slice(-6).toUpperCase()}.pdf`;
 
@@ -84,26 +84,44 @@ async function dispatchCampaign(db, campaign, transporter) {
   for (const recipient of campaign.recipients) {
     console.log(`[Cron] Sending to ${recipient.email}`);
 
-    // Strip markdown from the AI summary so it reads cleanly as plain text
+    // Remove markdown characters for plain text emails
     const summary = (report?.summary || 'No summary available.')
       .replace(/\*\*(.*?)\*\*/g, '$1')
       .replace(/\*(.*?)\*/g, '$1');
 
     const greeting = recipient.name ? `Hello ${recipient.name},` : 'Hello,';
 
-    const plainText = [
-      greeting,
-      '',
-      'Please find your Jacaranda Health analytics report attached as a PDF.',
-      '',
-      `Report: ${reportTitle}`,
-      '',
-      summary,
-      '',
-      '---',
-      'Automated dispatch from Jacaranda Health Operations Portal.',
-      'To unsubscribe, reply with "UNSUBSCRIBE" in the subject.',
-    ].join('\n');
+    let plainText = '';
+    
+    // Use the custom body if provided in the composer
+    if (campaign.body) {
+      plainText = [
+        greeting,
+        '',
+        campaign.body,
+        '',
+        '---',
+        'Automated dispatch from Jacaranda Analytics.',
+        'To unsubscribe, reply with "UNSUBSCRIBE" in the subject.',
+      ].join('\n');
+    } else {
+      // Fallback message for older campaigns
+      plainText = [
+        greeting,
+        '',
+        'Please find your Jacaranda Health analytics report attached as a PDF.',
+        '',
+        `Report: ${reportTitle}`,
+        '',
+        summary,
+        '',
+        '---',
+        'Automated dispatch from Jacaranda Analytics.',
+        'To unsubscribe, reply with "UNSUBSCRIBE" in the subject.',
+      ].join('\n');
+    }
+
+    const finalSubject = campaign.subject || `${reportTitle} — Jacaranda Analytics Report`;
 
     const attachments = [];
     if (pdfBuffer) {
@@ -115,23 +133,27 @@ async function dispatchCampaign(db, campaign, transporter) {
     }
 
     try {
+      console.log(`[Cron] Transport configuration: HOST=${process.env.SMTP_HOST} PORT=${process.env.SMTP_PORT} USER=${process.env.SMTP_USER ? 'SET' : 'MISSING'}`);
+      console.log(`[Cron] Payload -> To: ${recipient.email} | Subject: ${finalSubject} | Body Length: ${plainText.length}`);
+      
       const info = await transporter.sendMail({
         from: `"Jacaranda Analytics" <${process.env.SMTP_USER}>`,
         to: recipient.email,
-        subject: `${reportTitle} — Jacaranda Health Report`,
+        subject: finalSubject,
         text: plainText,
         html: undefined,
         attachments,
       });
-      console.log(`[Cron] Sent to ${recipient.email}, message ID: ${info.messageId}`);
+      console.log(`[Cron] SUCCESS: Sent to ${recipient.email}, message ID: ${info.messageId}`);
       successCount++;
     } catch (err) {
-      console.error(`[Cron] Failed for ${recipient.email}:`, err.message);
+      console.error(`[Cron] ERROR: Failed to send to ${recipient.email}:`, err.message);
+      if (err.response) console.error(`[Cron] SMTP Response:`, err.response);
       failCount++;
     }
   }
 
-  // Save run stats back to MongoDB
+  // Record campaign execution stats
   await db.collection('jacaranda_campaigns').updateOne(
     { campaignId: campaign.campaignId },
     {
@@ -145,7 +167,7 @@ async function dispatchCampaign(db, campaign, transporter) {
   console.log(`[Cron] Campaign ${campaign.campaignId} done: ${successCount} sent, ${failCount} failed`);
 }
 
-// Validates and registers a cron job for a campaign
+// Validate and register a cron job for the given campaign
 function registerTask(campaign, db, transporter) {
   if (!cron.validate(campaign.cronExpression)) {
     console.error(`[Cron] Invalid cron expression for campaign ${campaign.campaignId}: "${campaign.cronExpression}"`);
@@ -165,7 +187,7 @@ function registerTask(campaign, db, transporter) {
   activeTasks.set(campaign.campaignId, task);
 }
 
-// Connects to MongoDB, registers all scheduled campaigns, and starts the HTTP control server
+// Initialize MongoDB, register active campaigns, and start the control API
 async function processScheduledCampaigns() {
   console.log('[Cron] Polling MongoDB for active campaigns...');
   const client = new MongoClient(MONGO_URI);
@@ -194,10 +216,10 @@ async function processScheduledCampaigns() {
       registerTask(campaign, db, transporter);
     });
 
-    // Internal HTTP server used by the Next.js API to start, stop, and trigger campaigns
+    // Control API: Start, stop, or immediately trigger campaigns
     const server = http.createServer((req, res) => {
 
-      // Stop a running scheduled campaign
+      // Handle STOP request
       if (req.method === 'DELETE' && req.url.startsWith('/kill/')) {
         const campaignId = req.url.replace('/kill/', '');
         const task = activeTasks.get(campaignId);
@@ -213,7 +235,7 @@ async function processScheduledCampaigns() {
         }
       }
 
-      // Start a new campaign schedule dynamically
+      // Handle START request for a new schedule
       else if (req.method === 'POST' && req.url.startsWith('/start/')) {
         let body = '';
         req.on('data', chunk => body += chunk.toString());
@@ -230,7 +252,7 @@ async function processScheduledCampaigns() {
         });
       }
 
-      // Trigger an immediate dispatch for a campaign
+      // Handle IMMEDIATE dispatch request
       else if (req.method === 'POST' && req.url.startsWith('/dispatch-immediate/')) {
         let body = '';
         req.on('data', chunk => body += chunk.toString());

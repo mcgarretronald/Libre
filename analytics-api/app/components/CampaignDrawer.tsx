@@ -6,7 +6,7 @@ import { X, Download, ChevronDown, Send, Trash2, FileText } from 'lucide-react';
 interface Recipient { email: string; name?: string; isActive?: boolean; }
 
 interface CampaignDrawerProps {
-  report: { id: string | number; query: string } | null;
+  report: { id: string | number; query: string; summary?: string } | null;
   csvRecipients: Recipient[];
   setCsvRecipients: (r: Recipient[]) => void;
   schedule: string;
@@ -14,7 +14,7 @@ interface CampaignDrawerProps {
   customCron: string;
   setCustomCron: (s: string) => void;
   isSending: boolean;
-  handleDispatch: () => void;
+  handleDispatch: (subject: string, body: string) => Promise<boolean> | void;
   handleFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onClose: () => void;
 }
@@ -28,6 +28,7 @@ export function CampaignDrawer({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   useEffect(() => {
     if (report) {
@@ -53,6 +54,28 @@ export function CampaignDrawer({
       r.email.toLowerCase().includes(searchQuery.toLowerCase()) || 
       r.name?.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+  const onSendClick = async () => {
+    try {
+      const result = handleDispatch(subject, body);
+      if (result instanceof Promise) {
+        const success = await result;
+        if (success) {
+          setToast({ message: 'Campaign queued successfully!', type: 'success' });
+          setTimeout(() => onClose(), 2000);
+        } else {
+          setToast({ message: 'Failed to send campaign. Please try again.', type: 'error' });
+          setTimeout(() => setToast(null), 3000);
+        }
+      } else {
+        // Fallback for non-promise handleDispatch
+        onClose();
+      }
+    } catch (e) {
+      setToast({ message: 'An unexpected error occurred.', type: 'error' });
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
 
   return (
     <>
@@ -240,12 +263,17 @@ export function CampaignDrawer({
               </div>
 
               {/* Action Bar */}
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center justify-between pt-2 relative">
+                {toast && (
+                  <div className={`fixed top-8 left-1/2 -translate-x-1/2 z-[200] py-3 px-6 rounded-full text-sm font-bold shadow-lg text-center animate-in fade-in slide-in-from-top-4 ${toast.type === 'success' ? 'bg-emerald-500 text-white' : 'bg-destructive text-white'}`}>
+                    {toast.message}
+                  </div>
+                )}
                 <button onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors">
                   Discard
                 </button>
                 <button
-                  onClick={handleDispatch}
+                  onClick={onSendClick}
                   disabled={isSending || csvRecipients.filter(r => r.isActive !== false).length === 0}
                   className="px-8 py-2.5 rounded-lg text-sm font-semibold text-primary-foreground flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-sm hover:shadow-md bg-primary hover:bg-primary/90"
                 >

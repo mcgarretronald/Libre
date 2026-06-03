@@ -5,19 +5,20 @@ export default function proxy(req: NextRequest) {
   const token = req.cookies.get('access_token')?.value;
   const { pathname } = req.nextUrl;
 
-  // Let the login, register pages, their API routes, and agent endpoints through without a token
+  // Bypass authentication for public and internal worker routes
   if (
     pathname.startsWith('/login') || 
     pathname.startsWith('/register') || 
     pathname.startsWith('/api/auth') || 
     pathname.startsWith('/api/analytics/schema') || 
-    pathname.startsWith('/api/analytics/query')
+    pathname.startsWith('/api/analytics/query') ||
+    pathname.startsWith('/api/analytics/export')
   ) {
     return NextResponse.next();
   }
 
 
-  // No token — send to our own login page, not LibreChat
+  // Redirect unauthenticated users to local login
   if (!token) {
     const loginUrl = req.nextUrl.clone();
     loginUrl.pathname = '/login';

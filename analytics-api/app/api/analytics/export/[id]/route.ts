@@ -9,7 +9,7 @@ export async function GET(
   const format = searchParams.get('format') || 'pdf';
   const { id } = await params;
 
-  // Fetch the stored HTML markup from ClickHouse
+  // Retrieve the generated HTML layout for the specified report
   let htmlMarkup = '';
   try {
     const result = await internalClient.query({
@@ -25,7 +25,7 @@ export async function GET(
     return NextResponse.json({ error: 'Database error: ' + err.message }, { status: 500 });
   }
 
-  // Use puppeteer to render the HTML and export as PDF or PNG
+  // Render the HTML string in a headless browser to generate the PDF/PNG snapshot
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const puppeteer = (await import('puppeteer-core' as any)).default;
@@ -50,7 +50,7 @@ export async function GET(
     if (format === 'png') {
       rawBuffer   = await page.screenshot({ type: 'png', fullPage: true });
       contentType = 'image/png';
-      filename    = `jacaranda-report-${reportId}.png`;
+      filename    = `jacaranda-report-${id}.png`;
     } else {
       rawBuffer   = await page.pdf({
         format: 'A4',
@@ -58,7 +58,7 @@ export async function GET(
         margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
       });
       contentType = 'application/pdf';
-      filename    = `jacaranda-report-${reportId}.pdf`;
+      filename    = `jacaranda-report-${id}.pdf`;
     }
 
     await browser.close();

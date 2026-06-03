@@ -23,7 +23,7 @@ COPY analytics-api/cron-worker.js /app/cron/cron-worker.js
 
 # Install required dependencies for cron worker
 WORKDIR /app/cron
-RUN npm install mongodb node-cron nodemailer
+RUN npm install mongodb node-cron nodemailer @clickhouse/client
 
 WORKDIR /app
 # Start LibreChat Backend and Cron Worker simultaneously

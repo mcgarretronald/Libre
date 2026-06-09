@@ -21,9 +21,11 @@ interface ReportCardProps {
   report: Report;
   onDelete: (id: string | number) => void;
   onDispatch: (report: Report) => void;
+  onSelectReport: (report: Report) => void;
+  isSelected?: boolean;
 }
 
-export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
+export function ReportCard({ report, onDelete, onDispatch, onSelectReport, isSelected }: ReportCardProps) {
   const [expanded,     setExpanded]     = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [exporting,    setExporting]    = useState<'pdf' | 'png' | null>(null);
@@ -66,7 +68,7 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
         {/* Expand toggle */}
         <button
           className="flex-1 flex items-center gap-4 px-5 py-3.5 text-left min-w-0"
-          onClick={() => setExpanded(p => !p)}
+          onClick={() => { setExpanded(p => !p); onSelectReport(report); }}
         >
           <div className={`shrink-0 w-2 h-2 rounded-full ${report.fallbackSimulated ? 'bg-amber-400' : 'bg-[#1E6B65]'}`} />
           <div className="shrink-0 w-7 h-7 rounded-lg bg-[#3B143C]/8 dark:bg-[#3B143C]/20 flex items-center justify-center">
@@ -172,34 +174,7 @@ export function ReportCard({ report, onDelete, onDispatch }: ReportCardProps) {
             </div>
           )}
 
-          {/* Chart preview */}
-          <div className="bg-muted/40 p-4">
-            <div className="rounded-xl overflow-hidden border border-border bg-card shadow-sm relative group/iframe">
-              {report.htmlUrl ? (
-                <>
-                  <iframe
-                    src={report.htmlUrl}
-                    className="w-full bg-white"
-                    style={{ height: '380px', border: 'none' }}
-                    title={`Report ${shortId}`}
-                  />
-                  <Tip label="Expand preview" side="left">
-                    <button
-                      onClick={() => setShowLightbox(true)}
-                      className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black text-white rounded-lg opacity-0 group-hover/iframe:opacity-100 transition-all shadow-md"
-                    >
-                      <Maximize className="w-4 h-4" />
-                    </button>
-                  </Tip>
-                </>
-              ) : (
-                <div className="h-40 flex flex-col items-center justify-center text-slate-300">
-                  <Eye className="w-7 h-7 mb-2" />
-                  <p className="text-xs font-bold uppercase tracking-widest">Preview unavailable</p>
-                </div>
-              )}
-            </div>
-          </div>
+          {/* Inline Chart preview removed in favor of Side Panel */}
 
           {/* Action bar */}
           <div className="flex items-center justify-between px-5 py-3 bg-card border-t border-border">

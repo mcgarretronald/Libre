@@ -51,6 +51,7 @@ export default function CorporatePortal() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [generationStage, setGenerationStage] = useState<Stage>('idle');
   const [reports, setReports] = useState<Report[]>([]);
+  const [activeReport, setActiveReport] = useState<Report | null>(null);
   const [attachedImageBase64, setAttachedImageBase64] = useState<string | null>(null);
   const [attachedImageName, setAttachedImageName] = useState<string | null>(null);
 
@@ -141,13 +142,15 @@ export default function CorporatePortal() {
       clearTimeout(t1); clearTimeout(t2);
       if (data.success) {
         setGenerationStage('complete');
-        setReports(prev => [{
+        const newReport = {
           id: data.id, query: chatInput, summary: data.summary,
           timestamp: new Date().toISOString(),
           htmlUrl: data.htmlUrl ?? `/api/analytics/html/${data.id}`,
           sql: data.sql, details: data.details, rowCount: data.rowCount,
           fallbackSimulated: data.fallbackSimulated,
-        }, ...prev]);
+        };
+        setReports(prev => [newReport, ...prev]);
+        setActiveReport(newReport);
         setChatInput('');
         setAttachedImageBase64(null); setAttachedImageName(null);
         setTimeout(() => setGenerationStage('idle'), 600);
@@ -288,7 +291,10 @@ export default function CorporatePortal() {
 
         {/* ── Generator ── */}
         {activeView === 'generator' && (
-          <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex-1 flex min-h-0 relative bg-background">
+            
+            {/* Left side: Chat and Report List */}
+            <div className={`flex flex-col min-h-0 transition-all duration-300 ease-in-out z-0 ${activeReport ? 'w-full lg:w-[45%]' : 'w-full'}`}>
 
             {/* Report list */}
             <div className="flex-1 overflow-y-auto px-6 py-6">
@@ -342,6 +348,8 @@ export default function CorporatePortal() {
                               report={report}
                               onDelete={handleDelete}
                               onDispatch={r => { setDrawerReport(r); setCsvRecipients([]); setSchedule('immediate'); }}
+                              onSelectReport={setActiveReport}
+                              isSelected={activeReport?.id === report.id}
                             />
                           ))}
                         </div>
@@ -466,7 +474,37 @@ export default function CorporatePortal() {
               </div>
             </div>
           </div>
-        )}
+
+          {/* Right side: Artifact side panel */}
+          {activeReport && (
+            <div className="hidden lg:flex w-[55%] border-l border-border bg-card/50 flex-col absolute top-0 bottom-0 right-0 shadow-2xl z-10 animate-in slide-in-from-right-10 duration-300">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card shrink-0">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <BarChart2 className="w-4 h-4 text-[#E06A55]" />
+                  Interactive Dashboard
+                </h3>
+                <button
+                  onClick={() => setActiveReport(null)}
+                  className="p-1.5 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden relative bg-white m-4 rounded-xl border border-slate-200 shadow-inner">
+                {activeReport.htmlUrl ? (
+                  <iframe
+                    src={activeReport.htmlUrl}
+                    className="absolute inset-0 w-full h-full border-none"
+                    title={`Dashboard ${activeReport.id}`}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground font-semibold">Preview unavailable</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
         {/* ── Campaigner ── */}
         {activeView === 'campaigner' && (

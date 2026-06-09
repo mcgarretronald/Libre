@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Database, Settings2, ChevronDown, X, Menu, BarChart2 } from 'lucide-react';
+import { Shield, Database, Settings2, ChevronDown, X, Menu, BarChart2, RefreshCw } from 'lucide-react';
 import { DashboardLayout } from './components/DashboardLayout';
 import { PromptCard } from './components/PromptCard';
 import { ProgressCard } from './components/ProgressCard';
@@ -59,7 +59,23 @@ export default function CorporatePortal() {
   const [customCron, setCustomCron] = useState('');
   const [isSending, setIsSending] = useState(false);
 
-const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/analytics/connections').then(r => r.json()).then(d => {
+        if (d.success) {
+          setConnections(d.data);
+          if (d.data.length > 0) setDatabaseId(d.data[0].id);
+        }
+      }).catch(console.error),
+      fetch('/api/analytics/reports').then(r => r.json()).then(d => {
+        if (d.success && Array.isArray(d.data)) setReports(d.data);
+      }).catch(console.error)
+    ]).finally(() => setIsLoadingData(false));
+  }, []);
+
+  const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setAttachedImageName(file.name);
@@ -170,7 +186,12 @@ const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
 
             {/* Report list */}
             <div className="flex-1 overflow-y-auto px-6 py-6">
-              {reports.length === 0 && generationStage === 'idle' ? (
+              {isLoadingData ? (
+                <div className="flex flex-col items-center justify-center h-full text-center select-none" style={{ minHeight: '220px' }}>
+                  <RefreshCw className="h-8 w-8 animate-spin mx-auto text-muted-foreground/40 mb-4" />
+                  <p className="text-[13px] font-semibold text-muted-foreground">Loading...</p>
+                </div>
+              ) : reports.length === 0 && generationStage === 'idle' ? (
                 <div className="flex flex-col items-center justify-center h-full text-center select-none" style={{ minHeight: '220px' }}>
                   <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 bg-muted border border-border">
                     <svg className="w-6 h-6 text-muted-foreground/40" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">

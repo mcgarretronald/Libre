@@ -4,20 +4,21 @@ import { connectToDatabase } from '@/lib/db'
 import { decrypt } from '@/lib/encryption'
 import { ObjectId } from 'mongodb'
 import fs from 'fs'
+import { error } from 'console'
 
 // Default ClickHouse Client Setup (Fallback)
-const getClickhouseHost = (): string => {
-    const rawHost = process.env.CLICKHOUSE_HOST || 'http://localhost:8123'
-    let isDocker = false
-    try {
-        isDocker = fs.existsSync('/.dockerenv')
-    } catch { }
+// const getClickhouseHost = (): string => {
+//     const rawHost = process.env.CLICKHOUSE_HOST || 'http://localhost:8123'
+//     let isDocker = false
+//     try {
+//         isDocker = fs.existsSync('/.dockerenv')
+//     } catch { }
 
-    if (!isDocker && rawHost.includes('://clickhouse')) {
-        return rawHost.replace('://clickhouse', '://127.0.0.1')
-    }
-    return rawHost
-}
+//     if (!isDocker && rawHost.includes('://clickhouse')) {
+//         return rawHost.replace('://clickhouse', '://127.0.0.1')
+//     }
+//     return rawHost
+// }
 
 const buildClickHouseUrl = (host: string, port?: string | number) => {
     const normalizedHost = host.startsWith('http') ? host : `https://${host}`;
@@ -47,12 +48,8 @@ async function getClientForRequest(dbConnId: string | undefined | null) {
     }
 
     // Fallback to default
-    return createClient({
-        url: getClickhouseHost(),
-        username: process.env.CLICKHOUSE_USER,
-        password: process.env.CLICKHOUSE_PASSWORD,
-        database: process.env.CLICKHOUSE_DATABASE || 'default',
-    });
+    return 
+    // TODO : Ensure to retun a fall back message 
 }
 
 // Security & Validation Rules
@@ -67,6 +64,8 @@ const FORBIDDEN_FUNCTIONS = [
     'url', 'file', 'mysql', 'postgresql', 'mongodb', 's3', 'remote', 'executable'
 ]
 
+
+// Validate SQL Query  
 function validateSQL(sql: string): { ok: boolean; reason?: string } {
     const cleanSql = sql.trim()
     const upper = cleanSql.toUpperCase()
@@ -114,7 +113,7 @@ function validateSQL(sql: string): { ok: boolean; reason?: string } {
 export async function GET() {
     return NextResponse.json({
         status: 'online',
-        message: 'ClickHouse Analytics API is running. Send a POST request with a SQL query in the JSON body and Authorization headers to execute queries.',
+        message: 'Analytics API is running. Send a POST request with a SQL query in the JSON body and Authorization headers to execute queries.',
         endpoint: '/api/analytics/query',
         methods_supported: ['POST'],
     })
@@ -150,6 +149,10 @@ export async function POST(req: Request) {
 
         const clickhouse = await getClientForRequest(dbConnId);
         
+        if (!clickhouse) {
+            return NextResponse.json({ error: 'Database connection not found or invalid dbConnId provided.' }, { status: 400 })
+        }
+
         const result = await clickhouse.query({
             query: safeSql,
             format: 'JSONEachRow',

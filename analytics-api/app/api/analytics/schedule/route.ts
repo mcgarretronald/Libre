@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 
 // Enforce environment-based credential loading
-const MONGO_URI = process.env.MONGO_URI;
-if (!MONGO_URI) throw new Error('MONGO_URI environment variable is not set.');
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/librechat';
 
 export async function POST(req: Request) {
   try {

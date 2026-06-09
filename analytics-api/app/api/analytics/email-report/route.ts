@@ -52,7 +52,7 @@ export async function POST(req: Request) {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASSWORD,
       },
-    });
+    } as any);
 
     await transporter.verify();
 

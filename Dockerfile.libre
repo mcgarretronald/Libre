@@ -16,6 +16,9 @@ RUN npm run build:client
 FROM ghcr.io/danny-avila/librechat:latest
 COPY --from=builder /app/client/dist /app/client/dist
 
+# Copy the config into the image so it exists without a volume mount
+COPY librechat.yaml /app/librechat.yaml
+
 # Add Cron Worker
 USER root
 RUN mkdir -p /app/cron

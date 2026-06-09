@@ -144,22 +144,34 @@ async function dispatchCampaign(db, campaign, transporter) {
     }
 
     try {
-      console.log(`[Cron] Transport configuration: HOST=${process.env.SMTP_HOST} PORT=${process.env.SMTP_PORT} USER=${process.env.SMTP_USER ? 'SET' : 'MISSING'}`);
-      console.log(`[Cron] Payload -> To: ${recipient.email} | Subject: ${finalSubject} | Body Length: ${plainText.length}`);
-      
-      const info = await transporter.sendMail({
-        from: `"Jacaranda Analytics" <${process.env.SMTP_USER}>`,
+      console.log(`[Cron] Dispatching to Vercel internal API for: ${recipient.email}`);
+      const payload = {
         to: recipient.email,
         subject: finalSubject,
         text: plainText,
-        html: undefined,
-        attachments,
+        attachmentName: pdfBuffer ? pdfFilename : null,
+        attachmentBase64: pdfBuffer ? pdfBuffer.toString('base64') : null,
+      };
+
+      const res = await fetch(`${APP_URL}/api/analytics/internal-email-dispatch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.CRON_SECRET || 'jacaranda-default-secret'}`
+        },
+        body: JSON.stringify(payload)
       });
-      console.log(`[Cron] SUCCESS: Sent to ${recipient.email}, message ID: ${info.messageId}`);
+
+      const data = await res.json();
+      
+      if (!res.ok || !data.success) {
+        throw new Error(`Vercel API error (${res.status}): ${data.error || 'Unknown error'}`);
+      }
+
+      console.log(`[Cron] SUCCESS: Vercel dispatched email to ${recipient.email}, message ID: ${data.messageId}`);
       successCount++;
     } catch (err) {
-      console.error(`[Cron] ERROR: Failed to send to ${recipient.email}:`, err.message);
-      if (err.response) console.error(`[Cron] SMTP Response:`, err.response);
+      console.error(`[Cron] ERROR: Failed to send to ${recipient.email} via Vercel:`, err.message);
       failCount++;
     }
   }
@@ -214,14 +226,8 @@ async function processScheduledCampaigns() {
       console.log(`[Cron] Found ${campaigns.length} campaign(s), registering jobs...`);
     }
 
-    const transporter = createTransporter();
-
-    try {
-      await transporter.verify();
-      console.log('[Cron] SMTP connection verified');
-    } catch (smtpErr) {
-      console.error('[Cron] SMTP connection failed. Check SMTP_USER and SMTP_PASSWORD:', smtpErr.message);
-    }
+    // We no longer need to verify the SMTP connection here because Vercel handles it
+    console.log('[Cron] SMTP handled by Vercel; skipping local transporter verification');
 
     campaigns.forEach((campaign) => {
       registerTask(campaign, db, transporter);

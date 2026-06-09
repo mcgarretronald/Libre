@@ -53,7 +53,7 @@ function fetchBuffer(url) {
 }
 
 // Dispatch the campaign email to all active recipients
-async function dispatchCampaign(db, campaign, transporter) {
+async function dispatchCampaign(db, campaign) {
   console.log(`[Cron] Dispatching campaign ${campaign.campaignId}`);
   console.log(`[Cron] Recipients: ${campaign.recipients.length}, mode: ${campaign.scheduleType || 'immediate'}`);
 
@@ -191,7 +191,7 @@ async function dispatchCampaign(db, campaign, transporter) {
 }
 
 // Validate and register a cron job for the given campaign
-function registerTask(campaign, db, transporter) {
+function registerTask(campaign, db) {
   if (!cron.validate(campaign.cronExpression)) {
     console.error(`[Cron] Invalid cron expression for campaign ${campaign.campaignId}: "${campaign.cronExpression}"`);
     return;
@@ -201,7 +201,7 @@ function registerTask(campaign, db, transporter) {
 
   const task = cron.schedule(campaign.cronExpression, async () => {
     try {
-      await dispatchCampaign(db, campaign, transporter);
+      await dispatchCampaign(db, campaign);
     } catch (err) {
       console.error(`[Cron] Dispatch error for ${campaign.campaignId}:`, err.message);
     }
@@ -230,7 +230,7 @@ async function processScheduledCampaigns() {
     console.log('[Cron] SMTP handled by Vercel; skipping local transporter verification');
 
     campaigns.forEach((campaign) => {
-      registerTask(campaign, db, transporter);
+      registerTask(campaign, db);
     });
 
     // Control API: Start, stop, or immediately trigger campaigns
@@ -259,7 +259,7 @@ async function processScheduledCampaigns() {
         req.on('end', () => {
           try {
             const campaign = JSON.parse(body);
-            registerTask(campaign, db, transporter);
+            registerTask(campaign, db);
             res.writeHead(200);
             res.end(JSON.stringify({ success: true }));
           } catch (e) {
@@ -279,7 +279,7 @@ async function processScheduledCampaigns() {
             res.writeHead(200);
             res.end(JSON.stringify({ success: true }));
             // Run dispatch after responding so the caller doesn't wait
-            await dispatchCampaign(db, campaign, transporter);
+            await dispatchCampaign(db, campaign);
           } catch (e) {
             res.writeHead(400);
             res.end(JSON.stringify({ success: false, error: 'Bad payload' }));
@@ -320,14 +320,14 @@ async function processScheduledCampaigns() {
               { $set: { status: 'dispatched' } }
             );
           }
-          await dispatchCampaign(db, campaign, transporter);
+          await dispatchCampaign(db, campaign);
         }
 
         const scheduledCampaigns = await db.collection('jacaranda_campaigns').find({ status: 'scheduled' }).toArray();
         for (const campaign of scheduledCampaigns) {
           if (!activeTasks.has(campaign.campaignId)) {
             console.log(`[Cron] Scheduled new campaign ${campaign.campaignId}`);
-            registerTask(campaign, db, transporter);
+            registerTask(campaign, db);
           }
         }
 

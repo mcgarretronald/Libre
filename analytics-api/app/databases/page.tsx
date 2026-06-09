@@ -106,8 +106,6 @@ export default function DatabasesPortal() {
         md:relative md:translate-x-0
       `}>
         <Sidebar
-          activeView="databases"
-          setActiveView={() => { window.location.href = '/'; }}
           isProcessing={false}
         />
       </div>

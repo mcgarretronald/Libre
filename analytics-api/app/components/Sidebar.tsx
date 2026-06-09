@@ -8,23 +8,22 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 interface SidebarProps {
-  activeView: string;
-  setActiveView: (view: 'generator' | 'campaigner') => void;
-  isProcessing: boolean;
+  isProcessing?: boolean;
 }
 
-export function Sidebar({ activeView, setActiveView, isProcessing }: SidebarProps) {
+export function Sidebar({ isProcessing = false }: SidebarProps) {
   const { theme, toggle } = useTheme();
+  const pathname = usePathname();
 
   async function handleLogout() {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
     } catch (_) {}
-    // Clear any client-accessible cookie too
     document.cookie = 'access_token=; Max-Age=0; path=/';
-    // Redirect to LibreChat login (or portal root which will bounce to login)
     window.location.href = process.env.NEXT_PUBLIC_LIBRECHAT_URL || '/';
   }
 
@@ -54,35 +53,35 @@ export function Sidebar({ activeView, setActiveView, isProcessing }: SidebarProp
         <NavButton
           icon={<Sparkles className="w-3.5 h-3.5" />}
           label="Generate Report"
-          active={activeView === 'generator'}
+          active={pathname === '/'}
           activeColor="bg-[#E06A55]"
-          onClick={() => setActiveView('generator')}
+          href="/"
           badge={isProcessing}
         />
 
         <NavButton
           icon={<Send className="w-3.5 h-3.5" />}
           label="Campaigns"
-          active={activeView === 'campaigner'}
+          active={pathname === '/campaigns'}
           activeColor="bg-[#1E6B65]"
-          onClick={() => setActiveView('campaigner')}
+          href="/campaigns"
         />
 
         <Separator className="my-2 bg-white/8" />
 
-        <a
+        <Link
           href="/databases"
           className={`w-full flex items-center gap-3 px-3 py-2.5 text-[13px] font-semibold rounded-xl transition-all duration-200 ${
-            activeView === 'databases' ? 'bg-white/10 text-white' : 'text-white/45 hover:bg-white/5 hover:text-white/75'
+            pathname === '/databases' ? 'bg-white/10 text-white' : 'text-white/45 hover:bg-white/5 hover:text-white/75'
           }`}
         >
           <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-            activeView === 'databases' ? 'bg-indigo-500' : 'bg-white/8'
+            pathname === '/databases' ? 'bg-indigo-500' : 'bg-white/8'
           }`}>
             <Database className="w-3.5 h-3.5" />
           </div>
           Data Sources
-        </a>
+        </Link>
       </nav>
 
       {/* Bottom zone: theme toggle + user avatar */}
@@ -132,11 +131,11 @@ export function Sidebar({ activeView, setActiveView, isProcessing }: SidebarProp
             <DropdownMenuSeparator />
 
             <DropdownMenuItem asChild className="gap-2.5">
-              <a href="/databases">
+              <Link href="/databases">
                 <Database className="w-4 h-4 text-muted-foreground" />
                 Manage Data Sources
                 <ExternalLink className="w-3 h-3 ml-auto text-muted-foreground" />
-              </a>
+              </Link>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
@@ -156,18 +155,18 @@ export function Sidebar({ activeView, setActiveView, isProcessing }: SidebarProp
 }
 
 function NavButton({
-  icon, label, active, activeColor, onClick, badge,
+  icon, label, active, activeColor, href, badge,
 }: {
   icon: React.ReactNode;
   label: string;
   active: boolean;
   activeColor: string;
-  onClick: () => void;
+  href: string;
   badge?: boolean;
 }) {
   return (
-    <button
-      onClick={onClick}
+    <Link
+      href={href}
       className={`w-full flex items-center justify-between px-3 py-2.5 text-[13px] font-semibold rounded-xl transition-all duration-200 ${
         active ? 'bg-white/10 text-white' : 'text-white/45 hover:bg-white/5 hover:text-white/75'
       }`}
@@ -179,6 +178,6 @@ function NavButton({
         {label}
       </div>
       {badge && <span className="w-1.5 h-1.5 rounded-full bg-[#E06A55] animate-pulse" />}
-    </button>
+    </Link>
   );
 }

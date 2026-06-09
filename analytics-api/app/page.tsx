@@ -1,13 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Shield, Database, Settings2, ChevronDown, X, Menu } from 'lucide-react';
-import { Sidebar } from './components/Sidebar';
+import { Shield, Database, Settings2, ChevronDown, X, Menu, BarChart2 } from 'lucide-react';
+import { DashboardLayout } from './components/DashboardLayout';
 import { PromptCard } from './components/PromptCard';
 import { ProgressCard } from './components/ProgressCard';
 import { ReportCard } from './components/ReportCard';
 import { CampaignDrawer } from './components/CampaignDrawer';
-import { CampaignList } from './components/CampaignList';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
 import { Badge } from './components/ui/badge';
 import { useTheme } from './components/ThemeProvider';
@@ -33,25 +32,13 @@ export default function CorporatePortal() {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
-  // View State
-  const [activeView, setActiveView] = useState<'generator' | 'campaigner'>('generator');
-
-  useEffect(() => {
-    const saved = localStorage.getItem('analytics_active_view');
-    if (saved === 'campaigner' || saved === 'generator') setActiveView(saved);
-  }, []);
-
-  const handleSetActiveView = (view: 'generator' | 'campaigner') => {
-    setActiveView(view);
-    localStorage.setItem('analytics_active_view', view);
-  };
-
   // Chat and Generation State
   const [chatInput, setChatInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [generationStage, setGenerationStage] = useState<Stage>('idle');
   const [reports, setReports] = useState<Report[]>([]);
   const [activeReport, setActiveReport] = useState<Report | null>(null);
+  const reportListRef = useRef<HTMLDivElement>(null);
   const [attachedImageBase64, setAttachedImageBase64] = useState<string | null>(null);
   const [attachedImageName, setAttachedImageName] = useState<string | null>(null);
 
@@ -72,46 +59,7 @@ export default function CorporatePortal() {
   const [customCron, setCustomCron] = useState('');
   const [isSending, setIsSending] = useState(false);
 
-  // Active Campaigns State
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-
-  const reportListRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    fetch('/api/analytics/connections')
-      .then(r => r.json())
-      .then(d => {
-        if (d.success) {
-          setConnections(d.data);
-          if (d.data.length > 0) setDatabaseId(d.data[0].id);
-        }
-      })
-      .catch(console.error);
-  }, []);
-
-  useEffect(() => {
-    fetch('/api/analytics/reports')
-      .then(r => r.json())
-      .then(d => { if (d.success && Array.isArray(d.data)) setReports(d.data); })
-      .catch(console.error);
-  }, []);
-
-  const fetchCampaigns = async () => {
-    try {
-      const r = await fetch('/api/analytics/campaigns');
-      const d = await r.json();
-      if (d.success && Array.isArray(d.data)) setCampaigns(d.data);
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  useEffect(() => {
-    if (activeView !== 'campaigner') return;
-    fetchCampaigns();
-  }, [activeView]);
-
-  const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setAttachedImageName(file.name);
@@ -209,88 +157,12 @@ export default function CorporatePortal() {
     reader.readAsText(file);
   };
 
-  const handleDeleteCampaign = async (id: string) => {
-    setCampaigns(p => p.filter(c => c.campaignId !== id));
-    try { await fetch(`/api/analytics/campaigns/${id}`, { method: 'DELETE' }); } catch (_) {}
-  };
 
-  const handleCampaignAction = async (id: string, action: 'pause' | 'redispatch'): Promise<boolean> => {
-    try {
-      const res = await fetch('/api/analytics/campaigns', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, action }),
-      });
-      if (!res.ok) return false;
-      fetchCampaigns();
-      return true;
-    } catch (e) {
-      console.error('Action failed', e);
-      return false;
-    }
-  };
 
   const activeConnection = connections.find(c => c.id === databaseId);
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-
-      {/* Sidebar with mobile responsiveness */}
-      <div className={`
-        fixed inset-y-0 left-0 z-40 w-[220px] shrink-0 transform transition-transform duration-300 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:relative md:translate-x-0
-      `}>
-        <Sidebar activeView={activeView} setActiveView={(view) => {
-          handleSetActiveView(view);
-          setSidebarOpen(false); // Close mobile sidebar on navigation
-        }} isProcessing={isProcessing} />
-      </div>
-
-      {/* Mobile overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-
-        {/* ── Header ── */}
-        <header className="h-14 flex items-center px-4 md:px-6 shrink-0 border-b border-border bg-card transition-colors duration-300">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="md:hidden p-2 -ml-2 mr-2 text-muted-foreground hover:text-foreground rounded-lg hover:bg-muted/50"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          
-          <h1 className="text-[13px] font-bold tracking-wide text-muted-foreground flex-1 truncate pr-2">
-            {activeView === 'generator' ? 'Analytics Portal' : 'Campaign Manager'}
-          </h1>
-          <div className="flex items-center gap-2 md:gap-3 shrink-0">
-            <a
-              href="/databases"
-              className="flex items-center gap-1.5 text-[11px] font-semibold px-2 md:px-3 py-1.5 rounded-lg transition-colors text-muted-foreground hover:text-foreground hover:bg-accent border border-border shrink-0"
-            >
-              <Database className="w-4 h-4 md:w-3 md:h-3 shrink-0" />
-              <span className="hidden sm:inline">Manage Data Sources</span>
-            </a>
-            <Badge
-              variant="outline"
-              className="flex items-center gap-1.5 px-2 md:px-3 py-1.5 text-[11px] font-semibold border-emerald-500/30 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 shrink-0"
-            >
-              <Shield className="w-4 h-4 md:w-3 md:h-3 shrink-0" />
-              <span className="hidden sm:inline">AI Connected</span>
-            </Badge>
-          </div>
-        </header>
-
-        {/* ── Generator ── */}
-        {activeView === 'generator' && (
+    <DashboardLayout title="Analytics Portal" isProcessing={isProcessing}>
           <div className="flex-1 flex min-h-0 relative bg-background">
             
             {/* Left side: Chat and Report List */}
@@ -504,23 +376,6 @@ export default function CorporatePortal() {
             </div>
           )}
         </div>
-      )}
-
-        {/* ── Campaigner ── */}
-        {activeView === 'campaigner' && (
-          <div className="flex-1 overflow-y-auto px-6 py-6 bg-background transition-colors duration-300">
-            <div className="max-w-4xl mx-auto">
-              <CampaignList
-                campaigns={campaigns}
-                onDelete={handleDeleteCampaign}
-                onAction={handleCampaignAction}
-                onNewCampaign={() => handleSetActiveView('generator')}
-              />
-            </div>
-          </div>
-        )}
-      </main>
-
       {drawerReport && (
         <CampaignDrawer
           report={drawerReport}
@@ -536,6 +391,6 @@ export default function CorporatePortal() {
           onClose={() => setDrawerReport(null)}
         />
       )}
-    </div>
+    </DashboardLayout>
   );
 }

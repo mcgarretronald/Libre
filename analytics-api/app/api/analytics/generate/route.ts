@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       .find(row => row.startsWith('access_token='))
       ?.split('=')[1];
 
-    const { query, databaseId, brandColors } = await req.json();
+    const { query, databaseId, brandColors, parentReportId } = await req.json();
 
     if (!databaseId) {
       return NextResponse.json({ error: 'No database selected' }, { status: 400 });
@@ -140,6 +140,53 @@ export async function POST(req: Request) {
     console.log(`[Generate] Schema tokens used: ~${Math.ceil(injectedSchema.length / 4)}`);
     console.log('[Generate] Injected Schema:\n', injectedSchema);
 
+    // If parentReportId is provided, fetch the parent HTML to append to
+    let parentHtml = '';
+    if (parentReportId) {
+      try {
+        const parentResult = await internalClient.query({
+          query: `SELECT report_html FROM jacaranda_reports WHERE id = '${parentReportId}' AND user_id = '${session.userId}' LIMIT 1`,
+          format: 'JSONEachRow',
+        });
+        const parentRows = await parentResult.json() as any[];
+        if (parentRows.length > 0) {
+          parentHtml = parentRows[0].report_html;
+        }
+      } catch (err) {
+        console.warn('[Generate] Failed to fetch parent report HTML:', err);
+      }
+    }
+
+    let promptContent = `You are an expert BI engine. Produce a comprehensive, beautiful multi-chart HTML layout using Chart.js.
+Use these brand colors for datasets: ${JSON.stringify(brandColors || { primary: '#4A154B', secondary: '#E06A55', accent: '#1E6B65' })}.
+Do not output emojis or decorative icons.
+
+CRITICAL HTML RULES:
+1. You must output RAW, valid HTML only. 
+2. Do NOT use markdown code blocks (like \`\`\`html). 
+3. Do NOT use artifact syntax (like :::artifact). 
+4. Do NOT use markdown for bolding or formatting (like **text**).
+5. If you include textual analysis, you MUST wrap it in beautiful, modern HTML tags.
+6. You MUST use Chart.js via exactly this CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+7. You MUST render charts using <canvas> tags. DO NOT use <img> tags or external image chart APIs (like QuickChart).
+
+Only use tables and columns from this schema:
+${injectedSchema}
+
+When using the query_database_action or get_database_schema_action tools, YOU MUST pass the following connection ID as the "db_conn_id" parameter: ${databaseId}`;
+
+    if (parentHtml) {
+      promptContent += `\n\nCRITICAL INSTRUCTION FOR MODIFICATION:
+The user wants to ADD more charts to their existing report.
+Here is the exact HTML of their current report:
+=== START EXISTING HTML ===
+${parentHtml}
+=== END EXISTING HTML ===
+
+Your task is to return the FULL HTML, but with the NEW requested chart(s) appended to the layout. 
+DO NOT remove or delete the existing charts. Simply add the new canvas elements and Chart.js initialization logic to the existing code.`;
+    }
+
     // Trigger the AI report generation
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 300000);
@@ -149,23 +196,7 @@ export async function POST(req: Request) {
       messages: [
         {
           role: 'system',
-          content: `You are an expert BI engine. Produce a comprehensive, beautiful multi-chart HTML layout using Chart.js.
-Use these brand colors for datasets: ${JSON.stringify(brandColors || { primary: '#4A154B', secondary: '#E06A55', accent: '#1E6B65' })}.
-Do not output emojis or decorative icons.
-
-CRITICAL HTML RULES:
-1. You must output RAW, valid HTML only. 
-2. Do NOT use markdown code blocks (like \`\`\`html). 
-3. Do NOT use artifact syntax (like :::artifact). 
-4. Do NOT use markdown for bolding or formatting (like **text**).
-5. If you include textual analysis, you MUST wrap it in beautiful, modern HTML tags (e.g., <div style="font-family: sans-serif; padding: 1.5rem; background: #fafafa; border-radius: 8px; margin-top: 1rem;"><h2 style="color: #4A154B; margin-bottom: 0.5rem;">Your Title</h2><p style="color: #444; line-height: 1.6;">Your analysis...</p></div>). Ensure the text has a clear title and body.
-6. You MUST use Chart.js via exactly this CDN: <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-7. You MUST render charts using <canvas> tags. DO NOT use <img> tags or external image chart APIs (like QuickChart).
-
-Only use tables and columns from this schema:
-${injectedSchema}
-
-When using the query_database_action or get_database_schema_action tools, YOU MUST pass the following connection ID as the "db_conn_id" parameter: ${databaseId}`,
+          content: promptContent,
         },
         {
           role: 'user',

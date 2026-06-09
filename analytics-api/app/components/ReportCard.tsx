@@ -22,10 +22,11 @@ interface ReportCardProps {
   onDelete: (id: string | number) => void;
   onDispatch: (report: Report) => void;
   onSelectReport: (report: Report) => void;
+  onFollowUp?: (reportId: string | number, query: string) => void;
   isSelected?: boolean;
 }
 
-export function ReportCard({ report, onDelete, onDispatch, onSelectReport, isSelected }: ReportCardProps) {
+export function ReportCard({ report, onDelete, onDispatch, onSelectReport, onFollowUp, isSelected }: ReportCardProps) {
   const [expanded,     setExpanded]     = useState(false);
   const [showDownload, setShowDownload] = useState(false);
   const [exporting,    setExporting]    = useState<'pdf' | 'png' | null>(null);
@@ -174,7 +175,25 @@ export function ReportCard({ report, onDelete, onDispatch, onSelectReport, isSel
             </div>
           )}
 
-          {/* Inline Chart preview removed in favor of Side Panel */}
+          {/* Follow-up Graph Addition */}
+          {onFollowUp && (
+            <div className="px-5 py-3 border-b border-border bg-card/50">
+              <input
+                type="text"
+                placeholder="e.g. Add a pie chart showing X..."
+                className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/50 placeholder:text-muted-foreground/60 transition-all"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (e.currentTarget.value.trim()) {
+                      onFollowUp(report.id, e.currentTarget.value);
+                      e.currentTarget.value = '';
+                    }
+                  }
+                }}
+              />
+            </div>
+          )}
 
           {/* Action bar */}
           <div className="flex items-center justify-between px-5 py-3 bg-card border-t border-border">

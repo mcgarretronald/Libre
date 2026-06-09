@@ -130,6 +130,49 @@ export default function CorporatePortal() {
     } finally { setIsProcessing(false); }
   };
 
+  const handleFollowUpReport = async (reportId: string | number, query: string) => {
+    if (!query.trim() || isProcessing) return;
+    setIsProcessing(true);
+    setGenerationStage('schema');
+    const t1 = setTimeout(() => setGenerationStage('sql'), 3500);
+    const t2 = setTimeout(() => setGenerationStage('remote'), 7000);
+    try {
+      const res = await fetch('/api/analytics/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          databaseId,
+          brandColors,
+          parentReportId: reportId
+        }),
+      });
+      const data = await res.json();
+      clearTimeout(t1); clearTimeout(t2);
+      if (data.success) {
+        setGenerationStage('complete');
+        const newReport = {
+          id: data.id, query, summary: data.summary,
+          timestamp: new Date().toISOString(),
+          htmlUrl: data.htmlUrl ?? `/api/analytics/html/${data.id}`,
+          sql: data.sql, details: data.details, rowCount: data.rowCount,
+          fallbackSimulated: data.fallbackSimulated,
+        };
+        setReports(prev => [newReport, ...prev]);
+        setActiveReport(newReport);
+        setTimeout(() => setGenerationStage('idle'), 600);
+        setTimeout(() => reportListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 700);
+      } else {
+        alert(`Follow-up failed: ${data.error || 'Unknown error'}`);
+        setGenerationStage('idle');
+      }
+    } catch (err: any) {
+      clearTimeout(t1); clearTimeout(t2);
+      setGenerationStage('idle');
+      alert(`Network or timeout error: ${err.message}`);
+    } finally { setIsProcessing(false); }
+  };
+
   const handleDelete = async (id: string | number) => {
     setReports(p => p.filter(r => r.id !== id));
     try { await fetch(`/api/analytics/reports/${id}`, { method: 'DELETE' }); } catch (_) {}
@@ -242,6 +285,7 @@ export default function CorporatePortal() {
                               onDelete={handleDelete}
                               onDispatch={r => { setDrawerReport(r); setCsvRecipients([]); setSchedule('immediate'); }}
                               onSelectReport={setActiveReport}
+                              onFollowUp={handleFollowUpReport}
                               isSelected={activeReport?.id === report.id}
                             />
                           ))}

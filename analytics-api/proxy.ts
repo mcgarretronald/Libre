@@ -12,7 +12,8 @@ export default function proxy(req: NextRequest) {
     pathname.startsWith('/api/auth') || 
     pathname.startsWith('/api/analytics/schema') || 
     pathname.startsWith('/api/analytics/query') ||
-    pathname.startsWith('/api/analytics/export')
+    pathname.startsWith('/api/analytics/export') ||
+    pathname.startsWith('/api/analytics/internal-email-dispatch')
   ) {
     return NextResponse.next();
   }

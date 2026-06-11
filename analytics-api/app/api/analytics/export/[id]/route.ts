@@ -46,6 +46,28 @@ export async function GET(
       headless: chromium.headless,
     });
 
+    // Inject print styles to prevent cards and charts from breaking across pages
+    const printStyles = `
+      <style>
+        @media print {
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .bg-white, .rounded-xl, .shadow-sm, canvas, div[class*="grid"] > div { 
+            page-break-inside: avoid !important; 
+            break-inside: avoid !important; 
+          }
+          canvas { 
+            max-width: 100% !important; 
+          }
+        }
+      </style>
+    `;
+    
+    if (htmlMarkup.includes('</head>')) {
+      htmlMarkup = htmlMarkup.replace('</head>', printStyles + '</head>');
+    } else {
+      htmlMarkup += printStyles;
+    }
+
     const page = await browser.newPage();
     await page.setViewport({ width: 800, height: 600 });
     await page.setContent(htmlMarkup, { waitUntil: 'networkidle0' });

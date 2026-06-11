@@ -8,11 +8,11 @@ export async function POST(req: Request) {
     const { recipient_email, html_markup, brand_context, subject, email_body } = await req.json();
 
     if (!recipient_email) {
-      return NextResponse.json({ success: false, error: 'recipient_email is required.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'recipient_email is required.' }, { status: 200 });
     }
 
     if (!html_markup) {
-      return NextResponse.json({ success: false, error: 'html_markup is required.' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'html_markup is required.' }, { status: 200 });
     }
 
     const reportSubject = subject || (brand_context?.name
@@ -54,8 +54,6 @@ export async function POST(req: Request) {
       },
     } as any);
 
-    await transporter.verify();
-
     const info = await transporter.sendMail({
       from: `"Jacaranda Health Analytics" <${process.env.SMTP_USER}>`,
       to: recipient_email,
@@ -77,6 +75,6 @@ export async function POST(req: Request) {
 
   } catch (error: any) {
     console.error('SMTP error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: error.message }, { status: 200 });
   }
 }

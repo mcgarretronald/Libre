@@ -126,13 +126,13 @@ export async function POST(req: Request) {
         const dbConnId = body.db_conn_id || body.connection_id || body.databaseId;
 
         if (!sql || typeof sql !== 'string') {
-            return NextResponse.json({ error: 'No SQL provided. Please provide a "sql" or "query" parameter.' }, { status: 400 })
+            return NextResponse.json({ error: 'No SQL provided. Please provide a "sql" or "query" parameter.' }, { status: 200 })
         }
 
         // 1. Validate SQL
         const check = validateSQL(sql)
         if (!check.ok) {
-            return NextResponse.json({ error: check.reason }, { status: 403 })
+            return NextResponse.json({ error: check.reason }, { status: 200 })
         }
 
         // 2. Enforce safe row limits (max 5000)
@@ -150,7 +150,7 @@ export async function POST(req: Request) {
         const clickhouse = await getClientForRequest(dbConnId);
         
         if (!clickhouse) {
-            return NextResponse.json({ error: 'Database connection not found or invalid dbConnId provided.' }, { status: 400 })
+            return NextResponse.json({ error: 'Database connection not found or invalid dbConnId provided.' }, { status: 200 })
         }
 
         const result = await clickhouse.query({
@@ -170,6 +170,8 @@ export async function POST(req: Request) {
 
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
-        return NextResponse.json({ error: 'Query execution failure', details: message }, { status: 500 })
+        // Return 200 OK with error payload so LibreChat's agent can read the SQL error and self-heal.
+        // If we return 500 or 400, Axios throws an exception and the agent only sees "Request failed with status code 500"
+        return NextResponse.json({ error: 'Query execution failure', details: message }, { status: 200 })
     }
 }
